@@ -45,9 +45,25 @@ def register():
     bpy.types.Scene.vmcsimple_headcam_offset_rot = bpy.props.FloatVectorProperty(
         name="Offset Rotation", subtype='EULER', unit='ROTATION', size=3,
         default=(math.radians(-90.0), 0.0, 0.0))
+    # Live-tweakable extra twist added on top of bone + offset every tick.
+    bpy.types.Scene.vmcsimple_headcam_manual_rot = bpy.props.FloatVectorProperty(
+        name="Manual Rotation", subtype='EULER', unit='ROTATION', size=3,
+        default=(0.0, 0.0, 0.0))
 
     bpy.types.Scene.vmcsimple_xr_camera = bpy.props.PointerProperty(
         type=bpy.types.Object, poll=_poll_camera, name="XR Camera")
+    bpy.types.Scene.vmcsimple_xr_offset_loc = bpy.props.FloatVectorProperty(
+        name="XR Offset Location", subtype='TRANSLATION', size=3, default=(0.0, 0.0, 0.0))
+    bpy.types.Scene.vmcsimple_xr_offset_rot = bpy.props.FloatVectorProperty(
+        name="XR Offset Rotation", subtype='EULER', unit='ROTATION', size=3,
+        default=(0.0, 0.0, 0.0))
+    bpy.types.Scene.vmcsimple_xr_manual_rot = bpy.props.FloatVectorProperty(
+        name="XR Manual Rotation", subtype='EULER', unit='ROTATION', size=3,
+        default=(0.0, 0.0, 0.0))
+    # When enabled, the XR camera mirrors the head camera so both share one
+    # pose; manual rotation still applies on top.
+    bpy.types.Scene.vmcsimple_xr_follow_head = bpy.props.BoolProperty(
+        name="XR follows Head", default=False)
 
     bpy.types.Scene.vmcsimple_use_openvr_fingers = bpy.props.BoolProperty(
         name="Read fingers from SteamVR", default=False)
@@ -62,7 +78,12 @@ def unregister():
     del bpy.types.Scene.vmcsimple_headcam_bone
     del bpy.types.Scene.vmcsimple_headcam_offset_loc
     del bpy.types.Scene.vmcsimple_headcam_offset_rot
+    del bpy.types.Scene.vmcsimple_headcam_manual_rot
     del bpy.types.Scene.vmcsimple_xr_camera
+    del bpy.types.Scene.vmcsimple_xr_offset_loc
+    del bpy.types.Scene.vmcsimple_xr_offset_rot
+    del bpy.types.Scene.vmcsimple_xr_manual_rot
+    del bpy.types.Scene.vmcsimple_xr_follow_head
     del bpy.types.Scene.vmcsimple_use_openvr_fingers
 
     for c in reversed(classes):
