@@ -4,7 +4,7 @@ from .openvr_bridge import OPENVR_AVAILABLE
 
 
 class VMCSIMPLE_PT_panel(bpy.types.Panel):
-    bl_label = "Simple VMC Receiver"
+    bl_label = "PuppetVMC"
     bl_idname = "VMCSIMPLE_PT_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -37,16 +37,22 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
                 row.prop(item, "bone_name", text="")
 
         box2 = layout.box()
-        box2.label(text="Head camera (auto-bind + offset)")
+        box2.label(text="Head camera (follows bone + offset + live rotation)")
         box2.prop(scene, "vmcsimple_headcam")
         if scene.vmcsimple_headcam and armature:
             box2.prop_search(scene, "vmcsimple_headcam_bone", armature.pose, "bones", text="Bone")
         box2.prop(scene, "vmcsimple_headcam_offset_loc", text="Offset Loc")
         box2.prop(scene, "vmcsimple_headcam_offset_rot", text="Offset Rot")
+        box2.prop(scene, "vmcsimple_headcam_manual_rot", text="Manual Rot")
 
         box3 = layout.box()
-        box3.label(text="XR camera (real headset)")
+        box3.label(text="XR camera (real headset, or mirror head)")
         box3.prop(scene, "vmcsimple_xr_camera")
+        if scene.vmcsimple_xr_camera:
+            box3.prop(scene, "vmcsimple_xr_follow_head")
+            box3.prop(scene, "vmcsimple_xr_offset_loc", text="Offset Loc")
+            box3.prop(scene, "vmcsimple_xr_offset_rot", text="Offset Rot")
+            box3.prop(scene, "vmcsimple_xr_manual_rot", text="Manual Rot")
 
         box4 = layout.box()
         box4.label(text="Fingers directly from SteamVR (OpenVR)")
