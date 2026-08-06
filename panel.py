@@ -15,9 +15,9 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
         scene = context.scene
         armature = scene.vmcsimple_armature
 
+        # --- Connection ---
         layout.prop(scene, "vmcsimple_armature")
         layout.prop(scene, "vmcsimple_port")
-
         row = layout.row()
         if scene.vmcsimple_running:
             row.operator("vmcsimple.disconnect")
@@ -25,6 +25,7 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
             row.operator("vmcsimple.connect")
         layout.operator("vmcsimple.recalibrate")
 
+        # --- Bind (override) ---
         box = layout.box()
         box.label(text="Bind (override)")
         box.operator("vmcsimple.init_bone_map")
@@ -36,15 +37,20 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
             else:
                 row.prop(item, "bone_name", text="")
 
+        # --- Head camera ---
         box2 = layout.box()
         box2.label(text="Head camera (follows bone + offset + live rotation)")
         box2.prop(scene, "vmcsimple_headcam")
         if scene.vmcsimple_headcam and armature:
-            box2.prop_search(scene, "vmcsimple_headcam_bone", armature.pose, "bones", text="Bone")
-        box2.prop(scene, "vmcsimple_headcam_offset_loc", text="Offset Loc")
-        box2.prop(scene, "vmcsimple_headcam_offset_rot", text="Offset Rot")
-        box2.prop(scene, "vmcsimple_headcam_manual_rot", text="Manual Rot")
+            box2.prop_search(
+                scene, "vmcsimple_headcam_bone",
+                armature.pose, "bones", text="Bone"
+            )
+            box2.prop(scene, "vmcsimple_headcam_offset_loc", text="Offset Loc")
+            box2.prop(scene, "vmcsimple_headcam_offset_rot", text="Offset Rot")
+            box2.prop(scene, "vmcsimple_headcam_manual_rot", text="Manual Rot")
 
+        # --- XR camera ---
         box3 = layout.box()
         box3.label(text="XR camera (real headset, or mirror head)")
         box3.prop(scene, "vmcsimple_xr_camera")
@@ -54,8 +60,9 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
             box3.prop(scene, "vmcsimple_xr_offset_rot", text="Offset Rot")
             box3.prop(scene, "vmcsimple_xr_manual_rot", text="Manual Rot")
 
+        # --- OpenVR fingers ---
         box4 = layout.box()
-        box4.label(text="Fingers directly from SteamVR (OpenVR)")
+        box4.label(text="Fingers (SteamVR / OpenVR)")
         if OPENVR_AVAILABLE:
             box4.prop(scene, "vmcsimple_use_openvr_fingers")
         else:
