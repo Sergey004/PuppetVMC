@@ -1,12 +1,14 @@
 """Two cameras, both live-tweakable from the UI while Connect runs.
 
-Head camera follows a chosen bone with an offset location + offset rotation,
-plus a manual rotation that the user can drag in the panel to look around in
-real time. The XR camera is driven by the real headset pose and gets the same
-treatment (offset loc + offset rot + manual rot); optionally it can mirror
-the head camera when there is no active VR session or the user wants one
-shared viewport target. Both are recomputed every tick in loop.py, so any
-property change in the panel is reflected on the next frame.
+Head camera follows a chosen bone every tick: cam.matrix_world =
+bone_world @ Translate(offset_loc) @ Rotate(offset_rot) @ Rotate(manual_rot).
+No Child Of constraint and no bpy.ops calls — the matrix is written directly,
+so nothing depends on which object is active in the scene, and any change to
+Offset/Manual sliders in the N-panel is reflected on the next tick (or
+immediately via properties._headcam_update).
+
+XR camera is driven by the real headset pose, with the same offset/manual
+layering; optionally it can mirror the head camera's pose instead.
 """
 
 from mathutils import Matrix, Euler
@@ -15,9 +17,9 @@ from mathutils import Matrix, Euler
 def _compose(base_matrix, offset_loc, offset_rot, manual_rot):
     """base @ Translate(offset_loc) @ Rotate(offset_rot) @ Rotate(manual).
 
-    Offset is a fixed rig of the camera relative to its driver; manual_rot
-    is the live user twist layered on last so it never gets clobbered by the
-    bone or headset pose.
+    Offset is the fixed rig of the camera relative to its driver; manual_rot
+    is the live user twist layered on last so the bone or headset pose can
+    never clobber it.
     """
     m_loc = Matrix.Translation(offset_loc)
     m_off = Euler(offset_rot, 'XYZ').to_matrix().to_4x4()
@@ -57,11 +59,17 @@ def _xr_pose_matrix(context):
 
 
 def update_xr_camera(context):
-    """Requires an active VR session: View3D > VR > Start VR Session.
+    """XR camera pose source, chosen per tick:
 
-    Without a session, the camera is left where it was last set — the user
-    can still drag Offset/Manual fields when 'XR follows Head' mirrors the
-    head camera instead.
+    - 'XR follows Head' off (default): the real headset pose from the active
+      VR session. Requires View3D > VR > Start VR Session; with no session
+      running the camera is left in place.
+    - 'XR follows Head' on: the XR camera copies the head camera's current
+      world matrix, so a single bone-driven view feeds both cameras. The
+      Manual/Offset fields still layer on top.
+
+    Either way the result is base @ Translate(offset_loc) @ Rotate(offset_rot)
+    @ Rotate(manual_rot), so every UI field updates live on the next tick.
     """
     scene = context.scene
     cam = scene.vmcsimple_xr_camera
@@ -69,7 +77,10 @@ def update_xr_camera(context):
         return
 
     if scene.vmcsimple_xr_follow_head:
-        base = Matrix.Identity(4)
+        head = scene.vmcsimple_headcam
+        if not head:
+            return
+        base = head.matrix_world.copy()
     else:
         base = _xr_pose_matrix(context)
         if base is None:

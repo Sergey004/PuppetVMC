@@ -5,6 +5,15 @@ import bpy
 from .constants import RECEIVE_PORT_DEFAULT
 
 
+def _headcam_update(self, context):
+    """Called immediately when any head camera offset slider changes.
+    Applies the new offset to the camera even without an active VMC connection."""
+    from .cameras import update_head_camera
+    armature = context.scene.vmcsimple_armature
+    if armature:
+        update_head_camera(context, armature)
+
+
 class VMCSIMPLE_BoneMapItem(bpy.types.PropertyGroup):
     vmc_name: bpy.props.StringProperty(name="VMC Bone")
     bone_name: bpy.props.StringProperty(name="Target Bone")
@@ -41,14 +50,17 @@ def register():
         type=bpy.types.Object, poll=_poll_camera, name="Head Camera")
     bpy.types.Scene.vmcsimple_headcam_bone = bpy.props.StringProperty(name="Head Bone")
     bpy.types.Scene.vmcsimple_headcam_offset_loc = bpy.props.FloatVectorProperty(
-        name="Offset Location", subtype='TRANSLATION', size=3, default=(0.0, 0.05, 0.0))
+        name="Offset Location", subtype='TRANSLATION', size=3, default=(0.0, 0.05, 0.0),
+        update=_headcam_update)
     bpy.types.Scene.vmcsimple_headcam_offset_rot = bpy.props.FloatVectorProperty(
         name="Offset Rotation", subtype='EULER', unit='ROTATION', size=3,
-        default=(math.radians(-90.0), 0.0, 0.0))
+        default=(math.radians(-90.0), 0.0, 0.0),
+        update=_headcam_update)
     # Live-tweakable extra twist added on top of bone + offset every tick.
     bpy.types.Scene.vmcsimple_headcam_manual_rot = bpy.props.FloatVectorProperty(
         name="Manual Rotation", subtype='EULER', unit='ROTATION', size=3,
-        default=(0.0, 0.0, 0.0))
+        default=(0.0, 0.0, 0.0),
+        update=_headcam_update)
 
     bpy.types.Scene.vmcsimple_xr_camera = bpy.props.PointerProperty(
         type=bpy.types.Object, poll=_poll_camera, name="XR Camera")
