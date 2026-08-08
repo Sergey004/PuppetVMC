@@ -26,7 +26,7 @@ def _record_frame(context, armature, bone_map):
 def process_queue(context):
     if state.receiver is None:
         return
-    armature = context.scene.vmcsimple_armature
+    armature = context.scene.puppetvmc_armature
     bone_map = get_bone_map(context)
 
     while not state.receiver.queue.empty():
@@ -35,12 +35,12 @@ def process_queue(context):
             name, px, py, pz, qx, qy, qz, qw = args[:8]
             apply_bone(armature, bone_map, name, px, py, pz, qx, qy, qz, qw)
 
-    if context.scene.vmcsimple_use_openvr_fingers and armature:
+    if context.scene.puppetvmc_use_openvr_fingers and armature:
         poll_openvr_fingers(armature, bone_map)
 
     poll_record_buttons(context)  # no-op if no OpenVR session is running
 
-    if context.scene.vmcsimple_recording and armature:
+    if context.scene.puppetvmc_recording and armature:
         _record_frame(context, armature, bone_map)
 
     if armature:

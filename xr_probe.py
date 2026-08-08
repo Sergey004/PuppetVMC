@@ -73,8 +73,8 @@ _KNOWN_ACCESSORS = [
 ]
 
 
-class VMCSIMPLE_OT_xr_probe(bpy.types.Operator):
-    bl_idname = "vmcsimple.xr_probe"
+class PUPPETVMC_OT_xr_probe(bpy.types.Operator):
+    bl_idname = "puppetvmc.xr_probe"
     bl_label = "XR Probe (dump to console)"
     bl_description = (
         "Introspect the active Blender OpenXR session and write every reachable "
@@ -149,7 +149,7 @@ class VMCSIMPLE_OT_xr_probe(bpy.types.Operator):
 
 
 classes = (
-    VMCSIMPLE_OT_xr_probe,
+    PUPPETVMC_OT_xr_probe,
 )
 
 

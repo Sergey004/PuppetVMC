@@ -11,8 +11,8 @@ from .loop import process_queue
 from .constants import FRAME_RATE, VMC_BONE_SLOTS
 
 
-class VMCSIMPLE_OT_connect(bpy.types.Operator):
-    bl_idname = "vmcsimple.connect"
+class PUPPETVMC_OT_connect(bpy.types.Operator):
+    bl_idname = "puppetvmc.connect"
     bl_label = "Connect"
 
     _timer = None
@@ -20,21 +20,21 @@ class VMCSIMPLE_OT_connect(bpy.types.Operator):
     def modal(self, context, event):
         if event.type == 'TIMER':
             process_queue(context)
-        if not context.scene.vmcsimple_running:
+        if not context.scene.puppetvmc_running:
             self.cancel(context)
             return {'CANCELLED'}
         return {'PASS_THROUGH'}
 
     def execute(self, context):
-        state.receiver = OSCReceiver(context.scene.vmcsimple_port)
+        state.receiver = OSCReceiver(context.scene.puppetvmc_port)
         state.calibration["origin"] = None
         state.calibration["rotations"] = {}
-        if context.scene.vmcsimple_use_openvr_fingers:
+        if context.scene.puppetvmc_use_openvr_fingers:
             try:
                 openvr_start()
             except Exception as e:
                 self.report({'WARNING'}, f"OpenVR init failed: {e}")
-        context.scene.vmcsimple_running = True
+        context.scene.puppetvmc_running = True
         wm = context.window_manager
         self._timer = wm.event_timer_add(1.0 / FRAME_RATE, window=context.window)
         wm.modal_handler_add(self)
@@ -48,17 +48,17 @@ class VMCSIMPLE_OT_connect(bpy.types.Operator):
         context.window_manager.event_timer_remove(self._timer)
 
 
-class VMCSIMPLE_OT_disconnect(bpy.types.Operator):
-    bl_idname = "vmcsimple.disconnect"
+class PUPPETVMC_OT_disconnect(bpy.types.Operator):
+    bl_idname = "puppetvmc.disconnect"
     bl_label = "Disconnect"
 
     def execute(self, context):
-        context.scene.vmcsimple_running = False
+        context.scene.puppetvmc_running = False
         return {'FINISHED'}
 
 
-class VMCSIMPLE_OT_recalibrate(bpy.types.Operator):
-    bl_idname = "vmcsimple.recalibrate"
+class PUPPETVMC_OT_recalibrate(bpy.types.Operator):
+    bl_idname = "puppetvmc.recalibrate"
     bl_label = "Calibrate (stand in T-pose and click)"
     bl_description = "Resets the root position and T-pose baseline across all bones"
 
@@ -68,13 +68,13 @@ class VMCSIMPLE_OT_recalibrate(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class VMCSIMPLE_OT_init_bone_map(bpy.types.Operator):
-    bl_idname = "vmcsimple.init_bone_map"
+class PUPPETVMC_OT_init_bone_map(bpy.types.Operator):
+    bl_idname = "puppetvmc.init_bone_map"
     bl_label = "Refresh Bone List"
     bl_description = "Adds missing slots for the standard VMC bones without touching already-mapped ones"
 
     def execute(self, context):
-        coll = context.scene.vmcsimple_bone_map
+        coll = context.scene.puppetvmc_bone_map
         existing = {item.vmc_name for item in coll}
         added = 0
         for name in VMC_BONE_SLOTS:
@@ -86,8 +86,8 @@ class VMCSIMPLE_OT_init_bone_map(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class VMCSIMPLE_OT_install_openvr(bpy.types.Operator):
-    bl_idname = "vmcsimple.install_openvr"
+class PUPPETVMC_OT_install_openvr(bpy.types.Operator):
+    bl_idname = "puppetvmc.install_openvr"
     bl_label = "Install pyopenvr"
     bl_description = "Installs openvr straight into this addon's folder (vendor/). Blender must be restarted after install."
 
@@ -116,23 +116,23 @@ class VMCSIMPLE_OT_install_openvr(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class VMCSIMPLE_OT_toggle_record(bpy.types.Operator):
-    bl_idname = "vmcsimple.toggle_record"
+class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
+    bl_idname = "puppetvmc.toggle_record"
     bl_label = "Record"
     bl_description = "Toggle keyframe recording — advances the timeline and keys every mapped bone each tick while on"
 
     def execute(self, context):
-        context.scene.vmcsimple_recording = not context.scene.vmcsimple_recording
+        context.scene.puppetvmc_recording = not context.scene.puppetvmc_recording
         return {'FINISHED'}
 
 
 classes = (
-    VMCSIMPLE_OT_connect,
-    VMCSIMPLE_OT_disconnect,
-    VMCSIMPLE_OT_recalibrate,
-    VMCSIMPLE_OT_init_bone_map,
-    VMCSIMPLE_OT_install_openvr,
-    VMCSIMPLE_OT_toggle_record,
+    PUPPETVMC_OT_connect,
+    PUPPETVMC_OT_disconnect,
+    PUPPETVMC_OT_recalibrate,
+    PUPPETVMC_OT_init_bone_map,
+    PUPPETVMC_OT_install_openvr,
+    PUPPETVMC_OT_toggle_record,
 )
 
 

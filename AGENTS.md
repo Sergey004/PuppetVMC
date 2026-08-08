@@ -21,7 +21,7 @@ skeleton data directly from SteamVR via OpenVR, bypassing Blender's XR API
   and only pushes parsed tuples onto a queue. It must **never** touch
   `bpy.data` — Blender's API is main-thread-only. All application happens in
   `loop.py::process_queue`, ticked by a modal timer operator
-  (`operators.py::VMCSIMPLE_OT_connect.modal`).
+  (`operators.py::PUPPETVMC_OT_connect.modal`).
 - **Shared state lives in `state.py`.** Mutate via attributes/dict contents,
   not module reassignment (plain `state.receiver = x` from another module
   works because it's attribute assignment on the module object; reassigning
