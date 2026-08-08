@@ -80,7 +80,7 @@ Unity's Proximal/Intermediate/Distal slots is approximate.
   on a daemon thread. The thread only pushes parsed tuples onto a queue —
   it never touches `bpy.data` (Blender's API is main-thread-only).
 - `loop.py::process_queue` drains the queue on each tick of a modal timer
-  operator (`operators.py::VMCSIMPLE_OT_connect`).
+  operator (`operators.py::PUPPETVMC_OT_connect`).
 - `convert.py` flips Unity (Y-up, left-handed) to Blender (Z-up,
   right-handed): position `(-px, -pz, py)`, rotation `(qw, qx, qz, -qy)`.
 - `bones.py::apply_bone` uses a per-bone rotation delta against the
