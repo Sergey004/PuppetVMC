@@ -29,8 +29,8 @@ def _compose(base_matrix, offset_loc, offset_rot, manual_rot):
 
 def update_head_camera(context, armature):
     scene = context.scene
-    cam = scene.vmcsimple_headcam
-    bone_name = scene.vmcsimple_headcam_bone
+    cam = scene.puppetvmc_headcam
+    bone_name = scene.puppetvmc_headcam_bone
     if not cam or not bone_name or not armature:
         return
     pbone = armature.pose.bones.get(bone_name)
@@ -39,9 +39,9 @@ def update_head_camera(context, armature):
     bone_world = armature.matrix_world @ pbone.matrix
     cam.matrix_world = _compose(
         bone_world,
-        scene.vmcsimple_headcam_offset_loc,
-        scene.vmcsimple_headcam_offset_rot,
-        scene.vmcsimple_headcam_manual_rot,
+        scene.puppetvmc_headcam_offset_loc,
+        scene.puppetvmc_headcam_offset_rot,
+        scene.puppetvmc_headcam_manual_rot,
     )
 
 
@@ -72,12 +72,12 @@ def update_xr_camera(context):
     @ Rotate(manual_rot), so every UI field updates live on the next tick.
     """
     scene = context.scene
-    cam = scene.vmcsimple_xr_camera
+    cam = scene.puppetvmc_xr_camera
     if not cam:
         return
 
-    if scene.vmcsimple_xr_follow_head:
-        head = scene.vmcsimple_headcam
+    if scene.puppetvmc_xr_follow_head:
+        head = scene.puppetvmc_headcam
         if not head:
             return
         base = head.matrix_world.copy()
@@ -88,7 +88,7 @@ def update_xr_camera(context):
 
     cam.matrix_world = _compose(
         base,
-        scene.vmcsimple_xr_offset_loc,
-        scene.vmcsimple_xr_offset_rot,
-        scene.vmcsimple_xr_manual_rot,
+        scene.puppetvmc_xr_offset_loc,
+        scene.puppetvmc_xr_offset_rot,
+        scene.puppetvmc_xr_manual_rot,
     )

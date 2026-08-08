@@ -5,11 +5,22 @@ toggle enabled fails with an error, look here first (see HANDOFF.md)."""
 
 import json
 import os
+import sys
 import tempfile
 
 from . import state
 from .constants import OPENVR_FINGER_BONES
 from .bones import apply_bone
+
+# Installed via the "Install pyopenvr" button into this addon's own folder,
+# not into Blender's site-packages or the user site-packages — both of those
+# turned out unreliable in practice (permission errors, or Blender's bundled
+# Python simply not adding the user site-packages dir to sys.path even though
+# pip reports the install as successful). Vendoring next to the addon code
+# sidesteps all of that.
+VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+if VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
 
 try:
     import openvr
@@ -22,6 +33,8 @@ _MANIFEST = {
     "actions": [
         {"name": "/actions/main/in/SkeletonLeftHand", "type": "skeleton", "skeleton": "/skeleton/hand/left"},
         {"name": "/actions/main/in/SkeletonRightHand", "type": "skeleton", "skeleton": "/skeleton/hand/right"},
+        {"name": "/actions/main/in/RecordToggleLeft", "type": "boolean"},
+        {"name": "/actions/main/in/RecordToggleRight", "type": "boolean"},
     ],
     "action_sets": [
         {"name": "/actions/main", "usage": "leftright"},
@@ -31,13 +44,20 @@ _MANIFEST = {
             "language_tag": "en_US",
             "/actions/main/in/SkeletonLeftHand": "Left Hand Skeleton",
             "/actions/main/in/SkeletonRightHand": "Right Hand Skeleton",
+            "/actions/main/in/RecordToggleLeft": "Toggle Recording (Left Y)",
+            "/actions/main/in/RecordToggleRight": "Toggle Recording (Right B)",
         }
     ],
 }
 
+# No shipped default_bindings entry — SteamVR either auto-prompts an in-headset
+# binding request the first time this action manifest is used, or bind it
+# manually: SteamVR Settings > Controllers > Manage Controller Bindings, find
+# this app's entry, map Y (left) / B (right) to RecordToggleLeft/Right.
+
 
 def _write_manifest():
-    path = os.path.join(tempfile.gettempdir(), "vmcsimple_openvr_actions.json")
+    path = os.path.join(tempfile.gettempdir(), "puppetvmc_openvr_actions.json")
     with open(path, "w") as f:
         json.dump(_MANIFEST, f, indent=2)
     return path
@@ -58,10 +78,15 @@ def openvr_start():
     active.ulActionSet = action_set_handle
     active.ulRestrictedToDevice = openvr.k_ulInvalidInputValueHandle
 
+    record_left = vrinput.getActionHandle("/actions/main/in/RecordToggleLeft")
+    record_right = vrinput.getActionHandle("/actions/main/in/RecordToggleRight")
+
     state.ovr["input"] = vrinput
     state.ovr["action_sets"] = [active]
     state.ovr["left"] = left_action
     state.ovr["right"] = right_action
+    state.ovr["record_left"] = record_left
+    state.ovr["record_right"] = record_right
 
 
 def openvr_stop():
@@ -83,6 +108,31 @@ def _convert_ovr_position(v):
 
 def _convert_ovr_rotation(q):
     return (q.x, q.y, -q.z, -q.w)
+
+
+def poll_record_buttons(context):
+    """Reads the two digital button actions and toggles puppetvmc_recording
+    on a rising edge (press, not hold). Call once per tick alongside
+    poll_openvr_fingers — updateActionState() only needs to run once per
+    tick total, so this assumes fingers already called it, or falls back to
+    calling it itself if fingers are disabled."""
+    vrinput = state.ovr["input"]
+    if vrinput is None:
+        return
+    if not context.scene.puppetvmc_use_openvr_fingers:
+        # Fingers didn't already sync this tick — do it ourselves once.
+        vrinput.updateActionState(state.ovr["action_sets"])
+
+    for action_key in ("record_left", "record_right"):
+        action = state.ovr.get(action_key)
+        if action is None:
+            continue
+        try:
+            data = vrinput.getDigitalActionData(action, openvr.k_ulInvalidInputValueHandle)
+        except Exception:
+            continue
+        if data.bState and data.bChanged:  # rising edge only, not held-down repeat
+            context.scene.puppetvmc_recording = not context.scene.puppetvmc_recording
 
 
 def poll_openvr_fingers(armature, bone_map):
