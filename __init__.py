@@ -13,6 +13,7 @@ bl_info = {
 from . import properties
 from . import operators
 from . import panel
+from . import xr_probe
 from .openvr_bridge import openvr_stop
 
 
@@ -20,10 +21,12 @@ def register():
     properties.register()
     operators.register()
     panel.register()
+    xr_probe.register()
 
 
 def unregister():
     openvr_stop()
+    xr_probe.unregister()
     panel.unregister()
     operators.unregister()
     properties.unregister()

@@ -1,5 +1,6 @@
-"""Bind (override) lookup + applying received transforms to pose bones, with
-T-pose calibration and root motion via delta from the calibration point."""
+"""Avatar Bind (Unity-style) lookup + applying received transforms to pose
+bones, with T-pose calibration and root motion via delta from the
+calibration point."""
 
 from mathutils import Vector
 
@@ -9,9 +10,9 @@ from .convert import convert_position, convert_rotation
 
 
 def get_bone_map(context):
-    """Builds a dict vmc_name -> bone name from the UI list (Bind override)."""
+    """Builds a dict vmc_name -> bone name from the Avatar Bind UI list."""
     result = {}
-    for item in context.scene.vmcsimple_bone_map:
+    for item in context.scene.puppetvmc_bone_map:
         if item.bone_name:
             result[item.vmc_name] = item.bone_name
     return result

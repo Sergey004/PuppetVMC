@@ -25,9 +25,14 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
             row.operator("vmcsimple.connect")
         layout.operator("vmcsimple.recalibrate")
 
-        # --- Bind (override) ---
+        rec_row = layout.row()
+        rec_row.operator("vmcsimple.toggle_record",
+                          depress=scene.vmcsimple_recording,
+                          text="Stop Recording" if scene.vmcsimple_recording else "Start Recording")
+
+        # --- Avatar Bind (Unity-style bone mapping) ---
         box = layout.box()
-        box.label(text="Bind (override)")
+        box.label(text="Avatar Bind (Unity-style)")
         box.operator("vmcsimple.init_bone_map")
         for item in scene.vmcsimple_bone_map:
             row = box.row()
@@ -59,6 +64,7 @@ class VMCSIMPLE_PT_panel(bpy.types.Panel):
             box3.prop(scene, "vmcsimple_xr_offset_loc", text="Offset Loc")
             box3.prop(scene, "vmcsimple_xr_offset_rot", text="Offset Rot")
             box3.prop(scene, "vmcsimple_xr_manual_rot", text="Manual Rot")
+        box3.operator("vmcsimple.xr_probe")
 
         # --- OpenVR fingers ---
         box4 = layout.box()
