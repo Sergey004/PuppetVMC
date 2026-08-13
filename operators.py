@@ -8,6 +8,7 @@ from . import state
 from .osc import OSCReceiver
 from .openvr_bridge import openvr_start, openvr_stop, VENDOR_DIR
 from .loop import process_queue
+from .bones import build_bone_cache
 from .constants import FRAME_RATE, VMC_BONE_SLOTS
 
 
@@ -26,9 +27,27 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def execute(self, context):
-        state.receiver = OSCReceiver(context.scene.puppetvmc_port)
+        armature = context.scene.puppetvmc_armature
+        if armature is None:
+            self.report({'ERROR'}, "Pick an armature first")
+            return {'CANCELLED'}
+        # Bone cache (parent_quaternion + root bookkeeping) is built once at
+        # Connect time, like VMC4B's Config(). If the user re-maps bones while
+        # connected, this cache goes stale — the panel disables binding while
+        # running for that reason.
+        state.bone_cache = build_bone_cache(armature)
+        if state.bone_cache is None:
+            self.report({'WARNING'}, "Bind map is empty — nothing will move until you map VMC slots to bones")
+        try:
+            state.receiver = OSCReceiver(
+                context.scene.puppetvmc_address,
+                context.scene.puppetvmc_port,
+            )
+        except OSError as e:
+            state.bone_cache = None
+            self.report({'ERROR'}, f"Could not bind {context.scene.puppetvmc_address}:{context.scene.puppetvmc_port} — {e}")
+            return {'CANCELLED'}
         state.calibration["origin"] = None
-        state.calibration["rotations"] = {}
         if context.scene.puppetvmc_use_openvr_fingers:
             try:
                 openvr_start()
@@ -36,7 +55,7 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
                 self.report({'WARNING'}, f"OpenVR init failed: {e}")
         context.scene.puppetvmc_running = True
         wm = context.window_manager
-        self._timer = wm.event_timer_add(1.0 / FRAME_RATE, window=context.window)
+        PUPPETVMC_OT_connect._timer = wm.event_timer_add(1.0 / FRAME_RATE, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -45,7 +64,10 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
             state.receiver.stop()
             state.receiver = None
         openvr_stop()
-        context.window_manager.event_timer_remove(self._timer)
+        if PUPPETVMC_OT_connect._timer is not None:
+            context.window_manager.event_timer_remove(PUPPETVMC_OT_connect._timer)
+            PUPPETVMC_OT_connect._timer = None
+        state.bone_cache = None
 
 
 class PUPPETVMC_OT_disconnect(bpy.types.Operator):

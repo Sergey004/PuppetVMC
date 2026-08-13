@@ -36,6 +36,9 @@ def register():
     for c in classes:
         bpy.utils.register_class(c)
 
+    bpy.types.Scene.puppetvmc_address = bpy.props.StringProperty(
+        name="Address", description="VMC performer IP to listen on",
+        default="127.0.0.1")
     bpy.types.Scene.puppetvmc_port = bpy.props.IntProperty(
         name="Port", default=RECEIVE_PORT_DEFAULT)
     bpy.types.Scene.puppetvmc_running = bpy.props.BoolProperty(default=False)
@@ -86,6 +89,7 @@ def register():
 
 
 def unregister():
+    del bpy.types.Scene.puppetvmc_address
     del bpy.types.Scene.puppetvmc_port
     del bpy.types.Scene.puppetvmc_running
     del bpy.types.Scene.puppetvmc_armature
