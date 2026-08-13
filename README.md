@@ -46,17 +46,18 @@ real test — expect `AttributeError` or bpy API mismatches.
 
 1. Open the N-panel in the 3D viewport → **VMC** tab.
 2. Pick your Armature object.
-3. Set the Port to match SlimeVR Server's VMC output (commonly `39539` or
-   `39540`).
+3. Set the **Address** (default `127.0.0.1`, use `0.0.0.0` only if you need
+   to receive from another machine — note firewall) and **Port** to match
+   SlimeVR Server's VMC output (commonly `39539` or `39540`).
 4. Bind (override) → **Refresh Bone List**. This adds a slot for each
    standard VMC bone without touching already-mapped entries.
 5. Map each VMC slot to a bone of your rig.
 6. Click **Connect**, then stand in a T-pose and click **Calibrate**.
 
-Calibrate captures the current pose as the baseline (both body and fingers)
-and the root position as the origin. From then on, only the **delta** from
-the baseline is applied — the rest pose of your bones in Blender does not
-need to match how the tracker sits on you.
+Calibrate now **only resets the root position origin** (`state.calibration["origin"]`).
+Rotation baseline is no longer used — the add-on now applies rotations
+absolutely using `parent_quaternion` conjugation (matching VMC4B's approach),
+which already absorbs the rest-pose mismatch between tracker and bone.
 
 ### Cameras
 
@@ -105,6 +106,7 @@ __init__.py registers properties → operators → panel; openvr_stop on unregis
 
 | Setting | Default | Notes |
 | --- | --- | --- |
+| Address | `127.0.0.1` | Bind address. Use `0.0.0.0` only if receiving from another machine (may trigger firewall). |
 | Port | `39539` | Must match SlimeVR Server's VMC output port. |
 | Timer rate | `60.0` Hz | Defined as `FRAME_RATE` in `constants.py`. |
 | Root bone slot | `Hips` | Drives root motion; see `ROOT_HUMANOID_BONE`. |
@@ -115,6 +117,8 @@ __init__.py registers properties → operators → panel; openvr_stop on unregis
 1. Check raw OSC traffic with an external OSC monitor (e.g. Protokol) on
    the same port. This separates "SlimeVR isn't sending" from "Blender is
    applying it wrong". Do this before touching code.
+   **If SlimeVR Server's "Bundle OSC messages" toggle is ON, you will see
+   `#bundle` packets — our parser handles them (osc.py:parse_osc_packet).**
 2. Check the Bind map is non-empty and targets real pose bones.
 3. Only then inspect `loop.py` / `bones.py`.
 

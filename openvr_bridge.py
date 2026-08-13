@@ -1,7 +1,7 @@
 """Fingers pulled directly from SteamVR via IVRInput.GetSkeletalBoneData(), no
-network — the result goes straight into apply_bone() (same calibration /
-T-pose baseline as for the body). NOT TESTED HANDS-ON — if Connect with the
-toggle enabled fails with an error, look here first (see HANDOFF.md)."""
+network — the result goes straight into apply_bone() (same cache /
+parent_quaternion conjugation as for the body). NOT TESTED HANDS-ON — if Connect
+with the toggle enabled fails with an error, look here first (see HANDOFF.md)."""
 
 import json
 import os
@@ -28,7 +28,6 @@ try:
 except ImportError:
     OPENVR_AVAILABLE = False
 
-
 _MANIFEST = {
     "actions": [
         {"name": "/actions/main/in/SkeletonLeftHand", "type": "skeleton", "skeleton": "/skeleton/hand/left"},
@@ -49,11 +48,6 @@ _MANIFEST = {
         }
     ],
 }
-
-# No shipped default_bindings entry — SteamVR either auto-prompts an in-headset
-# binding request the first time this action manifest is used, or bind it
-# manually: SteamVR Settings > Controllers > Manage Controller Bindings, find
-# this app's entry, map Y (left) / B (right) to RecordToggleLeft/Right.
 
 
 def _write_manifest():
@@ -97,6 +91,10 @@ def openvr_stop():
             pass
     state.ovr["input"] = None
     state.ovr["action_sets"] = None
+    state.ovr["left"] = None
+    state.ovr["right"] = None
+    state.ovr["record_left"] = None
+    state.ovr["record_right"] = None
 
 
 def _convert_ovr_position(v):
@@ -135,7 +133,7 @@ def poll_record_buttons(context):
             context.scene.puppetvmc_recording = not context.scene.puppetvmc_recording
 
 
-def poll_openvr_fingers(armature, bone_map):
+def poll_openvr_fingers(armature):
     vrinput = state.ovr["input"]
     if vrinput is None:
         return
@@ -157,4 +155,5 @@ def poll_openvr_fingers(armature, bone_map):
             t = bone_transforms[bone_index]
             px, py, pz = _convert_ovr_position(t.position.v)
             qx, qy, qz, qw = _convert_ovr_rotation(t.orientation)
-            apply_bone(armature, bone_map, f"{side}{suffix}", px, py, pz, qx, qy, qz, qw)
+            # pass the globally-built bone_cache so apply_bone can conjugate
+            apply_bone(state.bone_cache, f"{side}{suffix}", px, py, pz, qx, qy, qz, qw)

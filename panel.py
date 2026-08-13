@@ -17,6 +17,7 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
 
         # --- Connection ---
         layout.prop(scene, "puppetvmc_armature")
+        layout.prop(scene, "puppetvmc_address")
         layout.prop(scene, "puppetvmc_port")
         row = layout.row()
         if scene.puppetvmc_running:

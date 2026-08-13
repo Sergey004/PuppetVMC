@@ -1,76 +1,68 @@
-"""Minimal parser for single (non-bundle) OSC messages, no external dependencies.
-VMC sends plain messages shaped like:
-    /VMC/Ext/Bone/Pos  ,sfffffff  name px py pz qx qy qz qw
-"""
+"""OSC receiver using vendored pythonosc (same as VMC4B).
 
-import socket
-import struct
+This gives us full OSC spec compliance (bundles, arrays, blobs, timetags, MIDI,
+etc.) without external dependencies — the pythonosc source is vendored in
+vendor/pythonosc/."""
+
 import threading
 import queue
+import time
+
+# Vendored pythonosc (copied from VMC4B core/pythonosc/)
+from .vendor.pythonosc.dispatcher import Dispatcher
+from .vendor.pythonosc.osc_server import BlockingOSCUDPServer
+from .vendor.pythonosc.osc_packet import OscPacket
+from .vendor.pythonosc import osc_message, osc_bundle
 
 
-def _read_osc_string(data, pos):
-    end = data.index(b'\x00', pos)
-    s = data[pos:end].decode('utf-8', errors='ignore')
-    pos = (end + 4) & ~3  # align to 4-byte boundary
-    return s, pos
+class _PacketQueueHandler:
+    """Flattens bundles into individual messages and pushes (address, args) to a queue."""
 
+    def __init__(self, q: queue.Queue):
+        self.q = q
 
-def parse_osc_message(data):
-    """Parses a single OSC message. Returns (address, args) or None if this
-    isn't a message (e.g. #bundle — intentionally not handled here, VMC
-    usually sends messages one at a time)."""
-    if not data.startswith(b'/'):
-        return None
-    address, pos = _read_osc_string(data, 0)
-    if pos >= len(data) or data[pos:pos + 1] != b',':
-        return address, []
-    type_tags, pos = _read_osc_string(data, pos)
-    args = []
-    for tag in type_tags[1:]:  # skip the leading comma
-        if tag == 'f':
-            (val,) = struct.unpack_from('>f', data, pos)
-            args.append(val)
-            pos += 4
-        elif tag == 'i':
-            (val,) = struct.unpack_from('>i', data, pos)
-            args.append(val)
-            pos += 4
-        elif tag == 's':
-            val, pos = _read_osc_string(data, pos)
-            args.append(val)
-        else:
-            break  # unsupported type — stop parsing this message
-    return address, args
+    def __call__(self, data: bytes, client_address):
+        try:
+            packet = OscPacket(data)
+        except Exception:
+            return
+        for timed_msg in packet.messages:
+            msg = timed_msg.message
+            # msg is an OscMessage; get address and args
+            address = msg.address
+            args = list(msg)  # OscMessage is iterable over its params
+            self.q.put((address, args))
 
 
 class OSCReceiver:
-    """Network thread. IMPORTANT: it only receives UDP and pushes onto a
-    queue — it never touches bpy.data directly (Blender's API isn't safe to
-    call from a non-main thread). Applying the data is only done by the
-    modal timer (see loop.py)."""
+    """Network thread running a pythonosc BlockingOSCUDPServer.
 
-    def __init__(self, port):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(("0.0.0.0", port))
-        self.sock.settimeout(0.5)
+    The server runs in a daemon thread and only pushes parsed (address, args)
+    tuples onto a queue — it never touches bpy.data directly (Blender's API
+    isn't safe to call from a non-main thread). Applying the data is only done
+    by the modal timer (see loop.py)."""
+
+    def __init__(self, host, port):
         self.queue = queue.Queue()
         self._stop = threading.Event()
+
+        dispatcher = Dispatcher()
+        handler = _PacketQueueHandler(self.queue)
+        dispatcher.set_default_handler(handler)
+
+        self.server = BlockingOSCUDPServer((host, port), dispatcher)
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def _loop(self):
-        while not self._stop.is_set():
-            try:
-                data, _ = self.sock.recvfrom(65536)
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-            parsed = parse_osc_message(data)
-            if parsed:
-                self.queue.put(parsed)
+        # serve_forever blocks; shutdown() from stop() will break it
+        try:
+            self.server.serve_forever()
+        except Exception:
+            pass
 
     def stop(self):
-        self._stop.set()
-        self.sock.close()
+        if self.server is not None:
+            self.server.shutdown()
+        self._thread.join(timeout=1.0)
+        self.server = None
