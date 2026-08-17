@@ -58,7 +58,7 @@ except ImportError:
 
 TARGET_IP = "127.0.0.1"
 TARGET_PORT = 39539
-SEND_RATE_HZ = 30
+SEND_RATE_HZ = 120
 
 # ---------------------------------------------------------------------------
 # OSC sending via pythonosc — deliberately independent of PuppetVMC's own

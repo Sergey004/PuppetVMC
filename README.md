@@ -22,7 +22,7 @@ real test — expect `AttributeError` or bpy API mismatches.
 
 ## Requirements
 
-- Blender 5.1.
+- Blender 5.1+.
 - A SlimeVR Server with VMC output enabled, sending to a known UDP port
   (default in this add-on: `39539`).
 - For fingers (optional): SteamVR running and a tracked hand that exposes a
