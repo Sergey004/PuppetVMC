@@ -13,6 +13,10 @@ calibration = {
     "origin": None,     # calibration point (raw VMC position) for root motion.
     # Rotations baseline was removed — parent_quaternion conjugation already
     # absorbs rest-pose mismatch; Calibrate resets only origin below.
+    "countdown_end": None,  # unix timestamp (time.time()) when a delayed
+    # calibration should fire; None means no countdown is pending. Used so
+    # you can trigger calibration BEFORE raising your arms into T-pose
+    # instead of needing a free hand to press something while already posed.
 }
 
 ovr = {"input": None, "action_sets": None, "left": None, "right": None}

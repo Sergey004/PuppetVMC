@@ -34,6 +34,7 @@ _MANIFEST = {
         {"name": "/actions/main/in/SkeletonRightHand", "type": "skeleton", "skeleton": "/skeleton/hand/right"},
         {"name": "/actions/main/in/RecordToggleLeft", "type": "boolean"},
         {"name": "/actions/main/in/RecordToggleRight", "type": "boolean"},
+        {"name": "/actions/main/out/Haptic", "type": "vibration"},
     ],
     "action_sets": [
         {"name": "/actions/main", "usage": "leftright"},
@@ -45,6 +46,7 @@ _MANIFEST = {
             "/actions/main/in/SkeletonRightHand": "Right Hand Skeleton",
             "/actions/main/in/RecordToggleLeft": "Toggle Recording (Left Y)",
             "/actions/main/in/RecordToggleRight": "Toggle Recording (Right B)",
+            "/actions/main/out/Haptic": "Calibration Confirmation Buzz",
         }
     ],
 }
@@ -74,6 +76,7 @@ def openvr_start():
 
     record_left = vrinput.getActionHandle("/actions/main/in/RecordToggleLeft")
     record_right = vrinput.getActionHandle("/actions/main/in/RecordToggleRight")
+    haptic = vrinput.getActionHandle("/actions/main/out/Haptic")
 
     state.ovr["input"] = vrinput
     state.ovr["action_sets"] = [active]
@@ -81,6 +84,7 @@ def openvr_start():
     state.ovr["right"] = right_action
     state.ovr["record_left"] = record_left
     state.ovr["record_right"] = record_right
+    state.ovr["haptic"] = haptic
 
 
 def openvr_stop():
@@ -95,6 +99,27 @@ def openvr_stop():
     state.ovr["right"] = None
     state.ovr["record_left"] = None
     state.ovr["record_right"] = None
+    state.ovr["haptic"] = None
+
+
+def haptic_pulse(duration=0.15, frequency=150.0, amplitude=1.0):
+    """Short vibration on whatever device the action set is bound to — used
+    to confirm a calibration countdown started/fired while the headset makes
+    the screen unusable. NOT hand-tested: exact pyopenvr
+    triggerHapticVibrationAction() argument order/names may not match this
+    installed version. No-ops silently if OpenVR isn't running, so it's safe
+    to call unconditionally."""
+    vrinput = state.ovr.get("input")
+    haptic = state.ovr.get("haptic")
+    if vrinput is None or haptic is None:
+        return
+    try:
+        vrinput.triggerHapticVibrationAction(
+            haptic, 0.0, duration, frequency, amplitude,
+            openvr.k_ulInvalidInputValueHandle,
+        )
+    except Exception:
+        pass  # signature mismatch or no device bound — see docstring
 
 
 def _convert_ovr_position(v):

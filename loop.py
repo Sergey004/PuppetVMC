@@ -30,7 +30,11 @@ def process_queue(context):
 
     while not state.receiver.queue.empty():
         address, args = state.receiver.queue.get()
-        if address in ("/VMC/Ext/Bone/Pos", "/VMC/Ext/Root/Pos") and armature and len(args) >= 8:
+        # Как у VMC4B: ловим ВСЬ адреса через дефолт-хендлер в osc.py,
+        # а дальше в apply_bone решаем, что с ними делать.
+        # Фильтр по адресу делается внутри apply_bone — это гарантирует,
+        # что Unknown-адреса молча игнорируются, как и у VMC4B.
+        if armature and len(args) >= 8:
             name, px, py, pz, qx, qy, qz, qw = args[:8]
             apply_bone(state.bone_cache, name, px, py, pz, qx, qy, qz, qw)
 

@@ -81,12 +81,31 @@ class PUPPETVMC_OT_disconnect(bpy.types.Operator):
 
 class PUPPETVMC_OT_recalibrate(bpy.types.Operator):
     bl_idname = "puppetvmc.recalibrate"
-    bl_label = "Calibrate (stand in T-pose and click)"
-    bl_description = "Resets the root position and T-pose baseline across all bones"
+    bl_label = "Calibrate Now"
+    bl_description = "Resets the root position origin immediately"
 
     def execute(self, context):
         state.calibration["origin"] = None
-        state.calibration["rotations"] = {}
+        return {'FINISHED'}
+
+
+class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
+    bl_idname = "puppetvmc.start_calibration_timer"
+    bl_label = "Calibrate in N seconds"
+    bl_description = (
+        "Delays calibration so you can trigger it BEFORE raising your arms "
+        "into T-pose, instead of needing a free hand while already posed. "
+        "Buzzes the controller (if OpenVR fingers are on) when the countdown "
+        "starts and again when it fires."
+    )
+
+    def execute(self, context):
+        import time
+        from .openvr_bridge import haptic_pulse
+        seconds = context.scene.puppetvmc_calib_delay
+        state.calibration["countdown_end"] = time.time() + seconds
+        haptic_pulse()
+        self.report({'INFO'}, f"Calibrating in {seconds}s")
         return {'FINISHED'}
 
 
@@ -152,6 +171,7 @@ classes = (
     PUPPETVMC_OT_connect,
     PUPPETVMC_OT_disconnect,
     PUPPETVMC_OT_recalibrate,
+    PUPPETVMC_OT_start_calibration_timer,
     PUPPETVMC_OT_init_bone_map,
     PUPPETVMC_OT_install_openvr,
     PUPPETVMC_OT_toggle_record,
