@@ -145,4 +145,4 @@ mismatches.
 
 ## License
 
-None specified.
+MIT
