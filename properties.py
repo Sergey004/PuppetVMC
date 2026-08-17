@@ -80,12 +80,20 @@ def register():
     bpy.types.Scene.puppetvmc_xr_follow_head = bpy.props.BoolProperty(
         name="XR follows Head", default=False)
 
-    bpy.types.Scene.puppetvmc_use_openvr_fingers = bpy.props.BoolProperty(
+bpy.types.Scene.puppetvmc_use_openvr_fingers = bpy.props.BoolProperty(
         name="Read fingers from SteamVR", default=False)
 
-    bpy.types.Scene.puppetvmc_recording = bpy.props.BoolProperty(
+bpy.types.Scene.puppetvmc_calib_delay = bpy.props.IntProperty(
+    name="Calibrate delay (s)", default=5,
+    description="Seconds to wait after pressing Calibrate in 5s before it applies")
+
+bpy.types.Scene.puppetvmc_recording = bpy.props.BoolProperty(
         name="Recording", default=False,
         description="While on, every tick advances the timeline and keyframes all mapped bones")
+
+    bpy.types.Scene.puppetvmc_calib_delay = bpy.props.IntProperty(
+        name="Calibration Delay (s)", default=5, min=1, max=30,
+        description="Seconds between pressing 'Calibrate in Ns' and the actual capture — gives you time to raise your arms into T-pose")
 
 
 def unregister():
@@ -106,6 +114,7 @@ def unregister():
     del bpy.types.Scene.puppetvmc_xr_follow_head
     del bpy.types.Scene.puppetvmc_use_openvr_fingers
     del bpy.types.Scene.puppetvmc_recording
+    del bpy.types.Scene.puppetvmc_calib_delay
 
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

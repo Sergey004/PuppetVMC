@@ -26,6 +26,56 @@ def _record_frame(context, armature, bone_map):
 def process_queue(context):
     if state.receiver is None:
         return
+
+    # --- Delayed calibration: fires once the countdown started via
+    # puppetvmc.start_calibration_timer has elapsed. Lets you trigger it
+    # BEFORE raising your arms into T-pose instead of needing a free hand
+    # while already posed.
+    if state.calibration["countdown_end"] is not None:
+        import time
+        if time.time() >= state.calibration["countdown_end"]:
+            state.calibration["origin"] = None
+            state.calibration["countdown_end"] = None
+            from .openvr_bridge import haptic_pulse
+            haptic_pulse()
+
+    armature = context.scene.puppetvmc_armature
+
+    while not state.receiver.queue.empty():
+        address, args = state.receiver.queue.get()
+        # Как у VMC4B: ловим ВСЫЕ адреса через дефолт-хендлер в osc.py,
+        # а дальше в apply_bone решаем, что с ними делать.
+        # Фильтр по адресу делается внутри apply_bone — это гарантирует,
+        # что Unknown-адреса молча игнорируются, как и у VMC4B.
+        if armature and len(args) >= 8:
+            name, px, py, pz, qx, qy, qz, qw = args[:8]
+            apply_bone(state.bone_cache, name, px, py, pz, qx, qy, qz, qw)
+
+    if context.scene.puppetvmc_use_openvr_fingers and armature:
+        poll_openvr_fingers(armature)
+
+    poll_record_buttons(context)
+
+    if context.scene.puppetvmc_recording and armature:
+        _record_frame(context, armature, state.bone_map_snapshot if hasattr(state, 'bone_map_snapshot') else get_bone_map(context))
+
+    if armature:
+        update_head_camera(context, armature)
+    update_xr_camera(context)
+
+
+    # Delayed calibration: fires once the countdown started via
+    # puppetvmc.start_calibration_timer has elapsed. Lets you trigger it
+    # BEFORE raising your arms into T-pose instead of needing a free hand
+    # while already posed.
+    if state.calibration["countdown_end"] is not None:
+        import time
+        if time.time() >= state.calibration["countdown_end"]:
+            state.calibration["origin"] = None
+            state.calibration["countdown_end"] = None
+            from .openvr_bridge import haptic_pulse
+            haptic_pulse()
+
     armature = context.scene.puppetvmc_armature
 
     while not state.receiver.queue.empty():

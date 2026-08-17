@@ -48,6 +48,7 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
             self.report({'ERROR'}, f"Could not bind {context.scene.puppetvmc_address}:{context.scene.puppetvmc_port} — {e}")
             return {'CANCELLED'}
         state.calibration["origin"] = None
+        state.calibration["countdown_end"] = None
         if context.scene.puppetvmc_use_openvr_fingers:
             try:
                 openvr_start()
@@ -81,12 +82,70 @@ class PUPPETVMC_OT_disconnect(bpy.types.Operator):
 
 class PUPPETVMC_OT_recalibrate(bpy.types.Operator):
     bl_idname = "puppetvmc.recalibrate"
-    bl_label = "Calibrate Now"
-    bl_description = "Resets the root position origin immediately"
+    bl_label = "Calibrate (stand in T-pose and click)"
+    bl_description = "Resets the root position and T-pose baseline across all bones"
 
     def execute(self, context):
         state.calibration["origin"] = None
+        state.calibration["rotations"] = {}
+        state.calibration["countdown_end"] = None
         return {'FINISHED'}
+
+
+class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
+    bl_idname = "puppetvmc.start_calibration_timer"
+    bl_label = "Calibrate in 5s"
+    bl_description = ("Start a countdown — stand in T-pose, wait N seconds, "
+                      "then calibration origin/rotations reset automatically")
+
+    _timer = None
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.puppetvmc_armature is not None
+
+    def modal(self, context, event):
+        if event.type in {'TIMER', 'WINDOWPOSTPAINT'}:
+            if state.calibration["countdown_end"] is not None:
+                if time.time() >= state.calibration["countdown_end"]:
+                    # Калибровка сработала — сбрасываем origin/rotations
+                    state.calibration["origin"] = None
+                    state.calibration["rotations"] = {}
+                    state.calibration["countdown_end"] = None
+                    # Вибро-сигнал (если OpenVR включена)
+                    try:
+                        from .openvr_bridge import haptic_pulse
+                        haptic_pulse()
+                    except Exception:
+                        pass
+                    self.cancel(context)
+                    return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+
+        if event.type == 'ESC':
+            self.cancel(context)
+            return {'CANCELLED'}
+
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
+        seconds = context.scene.puppetvmc_calib_delay
+        state.calibration["countdown_end"] = time.time() + seconds
+        # Вибро-сигнал старта (если есть OpenVR)
+        try:
+            from .openvr_bridge import haptic_pulse
+            haptic_pulse()
+        except Exception:
+            pass
+        context.window_manager.modal_handler_add(self)
+        self._timer = context.window_manager.event_timer_add(1.0, window=context.window)
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        state.calibration["countdown_end"] = None
 
 
 class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
