@@ -11,8 +11,6 @@ import time
 # Vendored pythonosc (copied from VMC4B core/pythonosc/)
 from .vendor.pythonosc.dispatcher import Dispatcher
 from .vendor.pythonosc.osc_server import BlockingOSCUDPServer
-from .vendor.pythonosc.osc_packet import OscPacket
-from .vendor.pythonosc import osc_message, osc_bundle
 
 
 class _PacketQueueHandler:
@@ -21,17 +19,8 @@ class _PacketQueueHandler:
     def __init__(self, q: queue.Queue):
         self.q = q
 
-    def __call__(self, data: bytes, client_address):
-        try:
-            packet = OscPacket(data)
-        except Exception:
-            return
-        for timed_msg in packet.messages:
-            msg = timed_msg.message
-            # msg is an OscMessage; get address and args
-            address = msg.address
-            args = list(msg)  # OscMessage is iterable over its params
-            self.q.put((address, args))
+    def __call__(self, address, *args):
+        self.q.put((address, list(args)))
 
 
 class OSCReceiver:
