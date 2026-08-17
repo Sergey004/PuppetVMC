@@ -129,5 +129,13 @@ def apply_bone(bone_cache, vmc_name, px, py, pz, qx, qy, qz, qw):
         hips_hl = bone_cache["hips_head_local"]
         if root_pbone is not None and root_q is not None and hips_hl is not None:
             world_pos = convert_position(px, py, pz)
-            local = root_q.inverted() @ (world_pos - hips_hl)
+            # Anchor: subtract the calibration origin (captured on the first
+            # frame after Calibrate/the countdown fires) so root motion is
+            # relative to wherever you were standing at calibration time, not
+            # to SlimeVR's own absolute room-scale origin. Without this the
+            # model can spawn arbitrarily far from the Blender scene origin.
+            if state.calibration["origin"] is None:
+                state.calibration["origin"] = world_pos.copy()
+            anchored_pos = world_pos - state.calibration["origin"]
+            local = root_q.inverted() @ (anchored_pos - hips_hl)
             root_pbone.location = local
