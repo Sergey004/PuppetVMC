@@ -1,6 +1,7 @@
 import sys
 import os
 import subprocess
+import time
 
 import bpy
 
@@ -31,10 +32,6 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
         if armature is None:
             self.report({'ERROR'}, "Pick an armature first")
             return {'CANCELLED'}
-        # Bone cache (parent_quaternion + root bookkeeping) is built once at
-        # Connect time, like VMC4B's Config(). If the user re-maps bones while
-        # connected, this cache goes stale — the panel disables binding while
-        # running for that reason.
         state.bone_cache = build_bone_cache(armature)
         if state.bone_cache is None:
             self.report({'WARNING'}, "Bind map is empty — nothing will move until you map VMC slots to bones")
@@ -108,11 +105,9 @@ class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
         if event.type in {'TIMER', 'WINDOWPOSTPAINT'}:
             if state.calibration["countdown_end"] is not None:
                 if time.time() >= state.calibration["countdown_end"]:
-                    # Калибровка сработала — сбрасываем origin/rotations
                     state.calibration["origin"] = None
                     state.calibration["rotations"] = {}
                     state.calibration["countdown_end"] = None
-                    # Вибро-сигнал (если OpenVR включена)
                     try:
                         from .openvr_bridge import haptic_pulse
                         haptic_pulse()
@@ -131,7 +126,6 @@ class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
     def invoke(self, context, event):
         seconds = context.scene.puppetvmc_calib_delay
         state.calibration["countdown_end"] = time.time() + seconds
-        # Вибро-сигнал старта (если есть OpenVR)
         try:
             from .openvr_bridge import haptic_pulse
             haptic_pulse()
@@ -146,26 +140,6 @@ class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
         state.calibration["countdown_end"] = None
-
-
-class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
-    bl_idname = "puppetvmc.start_calibration_timer"
-    bl_label = "Calibrate in N seconds"
-    bl_description = (
-        "Delays calibration so you can trigger it BEFORE raising your arms "
-        "into T-pose, instead of needing a free hand while already posed. "
-        "Buzzes the controller (if OpenVR fingers are on) when the countdown "
-        "starts and again when it fires."
-    )
-
-    def execute(self, context):
-        import time
-        from .openvr_bridge import haptic_pulse
-        seconds = context.scene.puppetvmc_calib_delay
-        state.calibration["countdown_end"] = time.time() + seconds
-        haptic_pulse()
-        self.report({'INFO'}, f"Calibrating in {seconds}s")
-        return {'FINISHED'}
 
 
 class PUPPETVMC_OT_init_bone_map(bpy.types.Operator):
@@ -195,15 +169,7 @@ class PUPPETVMC_OT_install_openvr(bpy.types.Operator):
         py = sys.executable
         try:
             os.makedirs(VENDOR_DIR, exist_ok=True)
-            # In case pip isn't installed at all in this Blender build.
             subprocess.run([py, "-m", "ensurepip"], check=False)
-            # --target installs straight into our own addon folder instead of
-            # Blender's site-packages or the user site-packages. This sidesteps
-            # two real issues seen in practice: (1) write permission errors when
-            # Blender lives under Program Files, and (2) Blender's bundled
-            # Python not adding the user site-packages dir to sys.path at all
-            # (pip install --user succeeds and "pip show" finds it, but
-            # "import openvr" still fails — confirmed on this exact machine).
             subprocess.run(
                 [py, "-m", "pip", "install", "--target", VENDOR_DIR, "openvr"],
                 check=True,
