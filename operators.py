@@ -185,10 +185,23 @@ class PUPPETVMC_OT_install_openvr(bpy.types.Operator):
 class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
     bl_idname = "puppetvmc.toggle_record"
     bl_label = "Record"
-    bl_description = "Toggle keyframe recording — advances the timeline and keys every mapped bone each tick while on"
+    bl_description = "Toggle VMC4B-style timestamped recording — stores packets and bakes an Action on stop"
 
     def execute(self, context):
-        context.scene.puppetvmc_recording = not context.scene.puppetvmc_recording
+        if not context.scene.puppetvmc_recording:
+            # start recording
+            context.scene.puppetvmc_recording = True
+            from . import state
+            from .recorder import start_recording
+            start_recording(context)
+            state.recording_start_time = __import__('time').time()
+            self.report({'INFO'}, "Recording started")
+        else:
+            # stop recording and bake
+            from .recorder import bake_recording
+            bake_recording(context)
+            context.scene.puppetvmc_recording = False
+            self.report({'INFO'}, "Recording stopped and baked")
         return {'FINISHED'}
 
 

@@ -20,3 +20,9 @@ calibration = {
 }
 
 ovr = {"input": None, "action_sets": None, "left": None, "right": None}
+
+# Recorder state for VMC4B-style timestamped recording
+from collections import deque
+recorder_queue = deque()  # deque of raw packets {timestamp, address, args}
+recording_start_time = None
+recording_start_frame = None

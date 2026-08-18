@@ -89,7 +89,7 @@ def register():
 
     bpy.types.Scene.puppetvmc_recording = bpy.props.BoolProperty(
         name="Recording", default=False,
-        description="While on, every tick advances the timeline and keyframes all mapped bones")
+        description="While on, VMC packets are stored with timestamps and baked to an Action on stop")
 
 
 def unregister():

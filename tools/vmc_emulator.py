@@ -58,7 +58,7 @@ except ImportError:
 
 TARGET_IP = "127.0.0.1"
 TARGET_PORT = 39539
-SEND_RATE_HZ = 120
+SEND_RATE_HZ = 30
 
 # ---------------------------------------------------------------------------
 # OSC sending via pythonosc — deliberately independent of PuppetVMC's own
@@ -334,7 +334,8 @@ def extract_pose_from_photo(path):
 
 ROTATION_BONES = [
     "Hips", "Spine", "Head",
-    "LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm",
+    "LeftUpperArm", "LeftLowerArm", "LeftHand",
+    "RightUpperArm", "RightLowerArm", "RightHand",
     "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg",
 ]
 PHOTO_COVERED_BONES = {name for name, *_ in PHOTO_BONE_DEFS}
@@ -428,11 +429,20 @@ def do_clear_photo():
         if name in bone_labelframes:
             bone_labelframes[name].config(text=name)
 
+def reset_all():
+    for vars_tuple in rot_vars.values():
+        for v in vars_tuple:
+            v.set(0.0)
+    for vars_tuple in pos_vars.values():
+        for v in vars_tuple:
+            v.set(0.0)
+    photo_override.clear()
 
 btn_row = ttk.Frame(photo_frame)
 btn_row.pack(fill="x", padx=4, pady=(0, 4))
 ttk.Button(btn_row, text="Load Photo...", command=do_load_photo).pack(side="left")
 ttk.Button(btn_row, text="Clear Photo Pose", command=do_clear_photo).pack(side="left", padx=6)
+ttk.Button(btn_row, text="Reset All", command=reset_all).pack(side="left", padx=6)
 
 # --- Rotation sliders ---
 ttk.Label(main, text="Rotations (-> /VMC/Ext/Bone/Pos, rotation only)",
@@ -446,6 +456,8 @@ add_position_row(main, "Hips Bone/Pos (real SlimeVR: always 0 here — sanity ch
                   "hips_bonepos", rng=1.0)
 add_position_row(main, "WAIST Tra/Pos (the real root-motion channel)",
                   "waist_trapos", rng=1.0)
+
+
 
 status = ttk.Label(main, text=f"Sending to {TARGET_IP}:{TARGET_PORT} @ {SEND_RATE_HZ} Hz")
 status.pack(anchor="w", pady=(10, 0))
