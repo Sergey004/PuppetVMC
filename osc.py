@@ -20,7 +20,7 @@ class _PacketQueueHandler:
         self.q = q
 
     def __call__(self, address, *args):
-        self.q.put((address, list(args)))
+        self.q.put({"timestamp": time.time(), "address": address, "args": list(args)})
 
 
 class OSCReceiver:
