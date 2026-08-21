@@ -49,6 +49,8 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import math
+import re
+import time
 
 try:
     from pythonosc.udp_client import SimpleUDPClient
@@ -74,6 +76,11 @@ def send_bone_pos(name, px, py, pz, qx, qy, qz, qw):
 
 def send_tra_pos(name, px, py, pz, qx, qy, qz, qw):
     osc_client.send_message("/VMC/Ext/Tra/Pos", [name, px, py, pz, qx, qy, qz, qw])
+
+
+def send_record_control(start, fps=None):
+    address = "/PuppetVMC/Record/Start" if start else "/PuppetVMC/Record/Stop"
+    osc_client.send_message(address, [float(fps)] if start and fps else [])
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +336,229 @@ def extract_pose_from_photo(path):
 
 
 # ---------------------------------------------------------------------------
+# Unity AnimationClip playback.
+# ---------------------------------------------------------------------------
+
+_ANIM_ATTRIBUTE_RE = re.compile(r"^\s+attribute: (.+?)\s*$")
+_ANIM_DURATION_RE = re.compile(r"^\s+m_StopTime: ([^\s]+)\s*$")
+_ANIM_SAMPLE_RATE_RE = re.compile(r"^\s+m_SampleRate: ([^\s]+)\s*$")
+_ANIM_LOOP_RE = re.compile(r"^\s+m_LoopTime: ([01])\s*$")
+
+
+def _finish_animation_curve(curves, attribute, key_values):
+    if attribute and key_values:
+        curves[attribute] = key_values
+
+
+class UnityAnimation:
+    """Read Unity YAML float curves that can be sent directly through VMC."""
+
+    DIRECT_TRACKS = {
+        "RootQ": "Hips",
+        "RootT": "Hips",
+        "LeftFootQ": "LeftFoot",
+        "RightFootQ": "RightFoot",
+        "LeftHandQ": "LeftHand",
+        "RightHandQ": "RightHand",
+    }
+    MUSCLE_TRACKS = {
+        "Spine Front-Back": ("Spine", 0),
+        "Spine Left-Right": ("Spine", 1),
+        "Spine Twist Left-Right": ("Spine", 2),
+        "Chest Front-Back": ("Chest", 0),
+        "Chest Left-Right": ("Chest", 1),
+        "Chest Twist Left-Right": ("Chest", 2),
+        "UpperChest Front-Back": ("UpperChest", 0),
+        "UpperChest Left-Right": ("UpperChest", 1),
+        "UpperChest Twist Left-Right": ("UpperChest", 2),
+        "Neck Nod Down-Up": ("Neck", 0),
+        "Neck Tilt Left-Right": ("Neck", 1),
+        "Neck Turn Left-Right": ("Neck", 2),
+        "Head Nod Down-Up": ("Head", 0),
+        "Head Tilt Left-Right": ("Head", 1),
+        "Head Turn Left-Right": ("Head", 2),
+        "Left Upper Leg Front-Back": ("LeftUpperLeg", 0),
+        "Left Upper Leg In-Out": ("LeftUpperLeg", 1),
+        "Left Upper Leg Twist In-Out": ("LeftUpperLeg", 2),
+        "Right Upper Leg Front-Back": ("RightUpperLeg", 0),
+        "Right Upper Leg In-Out": ("RightUpperLeg", 1),
+        "Right Upper Leg Twist In-Out": ("RightUpperLeg", 2),
+        "Left Lower Leg Twist In-Out": ("LeftLowerLeg", 2),
+        "Right Lower Leg Twist In-Out": ("RightLowerLeg", 2),
+        "Left Foot Up-Down": ("LeftFoot", 0),
+        "Left Foot Twist In-Out": ("LeftFoot", 2),
+        "Right Foot Up-Down": ("RightFoot", 0),
+        "Right Foot Twist In-Out": ("RightFoot", 2),
+        "Left Shoulder Down-Up": ("LeftUpperArm", 0),
+        "Left Shoulder Front-Back": ("LeftUpperArm", 2),
+        "Left Arm Down-Up": ("LeftUpperArm", 0),
+        "Left Arm Front-Back": ("LeftUpperArm", 2),
+        "Left Arm Twist In-Out": ("LeftUpperArm", 1),
+        "Left Forearm Twist In-Out": ("LeftLowerArm", 2),
+        "Left Hand Down-Up": ("LeftHand", 0),
+        "Left Hand In-Out": ("LeftHand", 1),
+        "Right Shoulder Down-Up": ("RightUpperArm", 0),
+        "Right Shoulder Front-Back": ("RightUpperArm", 2),
+        "Right Arm Down-Up": ("RightUpperArm", 0),
+        "Right Arm Front-Back": ("RightUpperArm", 2),
+        "Right Arm Twist In-Out": ("RightUpperArm", 1),
+        "Right Forearm Twist In-Out": ("RightLowerArm", 2),
+        "Right Hand Down-Up": ("RightHand", 0),
+        "Right Hand In-Out": ("RightHand", 1),
+    }
+
+    def __init__(self, path):
+        self.path = path
+        self.curves = {}
+        self.duration = 0.0
+        self.sample_rate = float(SEND_RATE_HZ)
+        self.loop = False
+        self._read(path)
+        self.rotation_tracks = self._build_tracks("Q")
+        self.position_tracks = self._build_tracks("T")
+        self.muscle_tracks = {
+            attribute: (bone_name, axis, self.curves[attribute])
+            for attribute, (bone_name, axis) in self.MUSCLE_TRACKS.items()
+            if attribute in self.curves
+        }
+        self.finger_tracks = self._build_finger_tracks()
+
+    def _build_finger_tracks(self):
+        tracks = {}
+        for side in ("Left", "Right"):
+            for finger in ("Thumb", "Index", "Middle", "Ring", "Little"):
+                spread = self.curves.get(f"{side}Hand.{finger}.Spread", [])
+                for joint, joint_name in enumerate(
+                    ("Proximal", "Intermediate", "Distal"), start=1
+                ):
+                    curl = self.curves.get(
+                        f"{side}Hand.{finger}.{joint} Stretched", []
+                    )
+                    if curl:
+                        tracks[f"{side}{finger}{joint_name}"] = (curl, spread)
+        return tracks
+
+    def _read(self, path):
+        current_attribute = None
+        key_values = []
+        pending_time = None
+        with open(path, "r", encoding="utf-8") as animation_file:
+            for line in animation_file:
+                duration_match = _ANIM_DURATION_RE.match(line)
+                if duration_match:
+                    self.duration = float(duration_match.group(1))
+                sample_rate_match = _ANIM_SAMPLE_RATE_RE.match(line)
+                if sample_rate_match:
+                    parsed_rate = float(sample_rate_match.group(1))
+                    if parsed_rate > 0.0:
+                        self.sample_rate = parsed_rate
+                loop_match = _ANIM_LOOP_RE.match(line)
+                if loop_match:
+                    self.loop = loop_match.group(1) == "1"
+
+                attribute_match = _ANIM_ATTRIBUTE_RE.match(line)
+                if attribute_match:
+                    _finish_animation_curve(self.curves, current_attribute, key_values)
+                    current_attribute = attribute_match.group(1)
+                    key_values = []
+                    pending_time = None
+                    continue
+
+                if current_attribute is None:
+                    continue
+                time_match = re.match(r"^\s+time: ([^\s]+)\s*$", line)
+                if time_match:
+                    pending_time = float(time_match.group(1))
+                    continue
+                value_match = re.match(r"^\s+value: ([^\s]+)\s*$", line)
+                if value_match and pending_time is not None:
+                    key_values.append((pending_time, float(value_match.group(1))))
+                    pending_time = None
+
+        _finish_animation_curve(self.curves, current_attribute, key_values)
+        if self.duration <= 0.0:
+            self.duration = max(
+                (key[0] for curve in self.curves.values() for key in curve),
+                default=0.0,
+            )
+        if not self.curves:
+            raise ValueError("AnimationClip does not contain float curves")
+
+    def _build_tracks(self, suffix):
+        tracks = {}
+        for prefix, bone_name in self.DIRECT_TRACKS.items():
+            if not prefix.endswith(suffix):
+                continue
+            components = {
+                component: self.curves.get(f"{prefix}.{component}", [])
+                for component in "xyzw"
+                if f"{prefix}.{component}" in self.curves
+            }
+            if components:
+                tracks[bone_name] = components
+        return tracks
+
+    @staticmethod
+    def _sample_curve(keys, at_time):
+        if not keys:
+            return None
+        if at_time <= keys[0][0]:
+            return keys[0][1]
+        if at_time >= keys[-1][0]:
+            return keys[-1][1]
+        for (left_time, left_value), (right_time, right_value) in zip(keys, keys[1:]):
+            if at_time <= right_time:
+                fraction = (at_time - left_time) / (right_time - left_time)
+                return left_value + (right_value - left_value) * fraction
+        return keys[-1][1]
+
+    def sample(self, elapsed):
+        if self.duration <= 0.0:
+            at_time = 0.0
+        elif self.loop:
+            at_time = elapsed % self.duration
+        else:
+            at_time = min(elapsed, self.duration)
+
+        rotations = {}
+        for bone_name, components in self.rotation_tracks.items():
+            values = [self._sample_curve(components.get(component), at_time)
+                      for component in "xyzw"]
+            if all(value is not None for value in values):
+                length = math.sqrt(sum(value * value for value in values))
+                rotations[bone_name] = tuple(value / length for value in values) \
+                    if length > 1e-9 else (0.0, 0.0, 0.0, 1.0)
+
+        muscle_angles = {}
+        for bone_name, axis, keys in self.muscle_tracks.values():
+            muscle_angles.setdefault(bone_name, [0.0, 0.0, 0.0])[axis] += \
+                self._sample_curve(keys, at_time) * 90.0
+        for bone_name, angles in muscle_angles.items():
+            if bone_name not in rotations:
+                rotations[bone_name] = euler_to_quat(*angles)
+
+        for bone_name, (curl_keys, spread_keys) in self.finger_tracks.items():
+            curl = self._sample_curve(curl_keys, at_time)
+            spread = self._sample_curve(spread_keys, at_time) if spread_keys else 0.0
+            if curl is None:
+                continue
+            spread_sign = 1.0 if bone_name.startswith("Left") else -1.0
+            rotations[bone_name] = euler_to_quat(
+                math.degrees(curl),
+                math.degrees(spread * spread_sign) if bone_name.endswith("Proximal") else 0.0,
+                0.0,
+            )
+
+        positions = {}
+        root_components = self.position_tracks.get("Hips", {})
+        root_values = [self._sample_curve(root_components.get(component), at_time)
+                       for component in "xyz"]
+        if all(value is not None for value in root_values):
+            positions["hips_bonepos"] = tuple(root_values)
+        return rotations, positions
+
+
+# ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
 
@@ -336,8 +566,13 @@ ROTATION_BONES = [
     "Hips", "Spine", "Head",
     "LeftUpperArm", "LeftLowerArm", "LeftHand",
     "RightUpperArm", "RightLowerArm", "RightHand",
-    "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg",
+    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+    "RightUpperLeg", "RightLowerLeg", "RightFoot",
 ]
+for _side in ("Left", "Right"):
+    for _finger in ("Thumb", "Index", "Middle", "Ring", "Little"):
+        for _joint in ("Proximal", "Intermediate", "Distal"):
+            ROTATION_BONES.append(f"{_side}{_finger}{_joint}")
 PHOTO_COVERED_BONES = {name for name, *_ in PHOTO_BONE_DEFS}
 
 root = tk.Tk()
@@ -361,6 +596,10 @@ rot_vars = {}        # bone_name -> (pitch_var, yaw_var, roll_var)
 pos_vars = {}         # key -> (x_var, y_var, z_var)
 photo_override = {}   # bone_name -> (qx, qy, qz, qw), takes priority over sliders
 bone_labelframes = {}  # bone_name -> LabelFrame, for visual override indication
+animation = None
+animation_elapsed = 0.0
+animation_started_at = None
+animation_playing = False
 
 
 def add_rotation_row(parent, label):
@@ -429,6 +668,62 @@ def do_clear_photo():
         if name in bone_labelframes:
             bone_labelframes[name].config(text=name)
 
+
+def do_load_animation():
+    global animation, animation_elapsed, animation_started_at, animation_playing
+    path = filedialog.askopenfilename(
+        title="Choose a Unity AnimationClip",
+        filetypes=[("Unity AnimationClip", "*.anim"), ("All files", "*.*")],
+    )
+    if not path:
+        return
+    try:
+        loaded_animation = UnityAnimation(path)
+    except (OSError, ValueError) as error:
+        messagebox.showerror("Animation load failed", str(error))
+        return
+    animation = loaded_animation
+    animation_elapsed = 0.0
+    animation_started_at = time.perf_counter()
+    animation_playing = True
+    send_record_control(True, animation.sample_rate)
+    animation_status.config(
+        text=f"Playing {os.path.basename(path)}: {animation.duration:.2f}s @ "
+             f"{animation.sample_rate:g} FPS, "
+             f"{len(animation.rotation_tracks)} quaternion + "
+             f"{len(animation.muscle_tracks)} muscle + "
+             f"{len(animation.finger_tracks)} finger tracks"
+    )
+    animation_play_button.config(text="Pause")
+
+
+def do_toggle_animation():
+    global animation_elapsed, animation_started_at, animation_playing
+    if animation is None:
+        return
+    now = time.perf_counter()
+    if animation_playing:
+        animation_elapsed = now - animation_started_at
+        animation_playing = False
+        send_record_control(False)
+        animation_play_button.config(text="Play")
+    else:
+        animation_started_at = now - animation_elapsed
+        animation_playing = True
+        send_record_control(True, animation.sample_rate)
+        animation_play_button.config(text="Pause")
+
+
+def do_clear_animation():
+    global animation, animation_elapsed, animation_started_at, animation_playing
+    animation = None
+    animation_elapsed = 0.0
+    animation_started_at = None
+    animation_playing = False
+    send_record_control(False)
+    animation_status.config(text="No animation loaded — sliders in control.")
+    animation_play_button.config(text="Play")
+
 def reset_all():
     for vars_tuple in rot_vars.values():
         for v in vars_tuple:
@@ -443,6 +738,18 @@ btn_row.pack(fill="x", padx=4, pady=(0, 4))
 ttk.Button(btn_row, text="Load Photo...", command=do_load_photo).pack(side="left")
 ttk.Button(btn_row, text="Clear Photo Pose", command=do_clear_photo).pack(side="left", padx=6)
 ttk.Button(btn_row, text="Reset All", command=reset_all).pack(side="left", padx=6)
+
+# --- Unity AnimationClip controls ---
+animation_frame = ttk.LabelFrame(main, text="Unity animation (.anim)")
+animation_frame.pack(fill="x", pady=(0, 8))
+animation_status = ttk.Label(animation_frame, text="No animation loaded — sliders in control.")
+animation_status.pack(anchor="w", padx=4, pady=(2, 4))
+animation_btn_row = ttk.Frame(animation_frame)
+animation_btn_row.pack(fill="x", padx=4, pady=(0, 4))
+ttk.Button(animation_btn_row, text="Load Animation...", command=do_load_animation).pack(side="left")
+animation_play_button = ttk.Button(animation_btn_row, text="Play", command=do_toggle_animation)
+animation_play_button.pack(side="left", padx=6)
+ttk.Button(animation_btn_row, text="Clear Animation", command=do_clear_animation).pack(side="left")
 
 # --- Rotation sliders ---
 ttk.Label(main, text="Rotations (-> /VMC/Ext/Bone/Pos, rotation only)",
@@ -464,15 +771,27 @@ status.pack(anchor="w", pady=(10, 0))
 
 
 def tick():
+    animation_rotations = {}
+    animation_positions = {}
+    if animation is not None:
+        elapsed = (time.perf_counter() - animation_started_at
+                   if animation_playing else animation_elapsed)
+        animation_rotations, animation_positions = animation.sample(elapsed)
+
     for bone in ROTATION_BONES:
-        if bone in photo_override:
+        if bone in animation_rotations:
+            qx, qy, qz, qw = animation_rotations[bone]
+        elif bone in photo_override:
             qx, qy, qz, qw = photo_override[bone]
         else:
             pitch, yaw, roll = (v.get() for v in rot_vars[bone])
             qx, qy, qz, qw = euler_to_quat(pitch, yaw, roll)
 
         if bone == "Hips":
-            px, py, pz = (v.get() for v in pos_vars["hips_bonepos"])
+            if "hips_bonepos" in animation_positions:
+                px, py, pz = animation_positions["hips_bonepos"]
+            else:
+                px, py, pz = (v.get() for v in pos_vars["hips_bonepos"])
         else:
             px, py, pz = 0.0, 0.0, 0.0
         send_bone_pos(bone, px, py, pz, qx, qy, qz, qw)
