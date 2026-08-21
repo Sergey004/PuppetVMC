@@ -25,6 +25,7 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
         else:
             row.operator("puppetvmc.connect")
         layout.operator("puppetvmc.recalibrate")
+        layout.operator("puppetvmc.force_t_pose")
         calib_row = layout.row(align=True)
         calib_row.prop(scene, "puppetvmc_calib_delay", text="Delay (s)")
         calib_row.operator("puppetvmc.start_calibration_timer", text="Calibrate in Ns")
