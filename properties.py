@@ -91,6 +91,14 @@ def register():
         name="Recording", default=False,
         description="While on, VMC packets are stored with timestamps and baked to an Action on stop")
 
+    bpy.types.Scene.puppetvmc_animation_file = bpy.props.StringProperty(
+        name="Unity Animation", subtype='FILE_PATH')
+    bpy.types.Scene.puppetvmc_animation_playing = bpy.props.BoolProperty(
+        name="Animation Playing", default=False)
+    bpy.types.Scene.puppetvmc_animation_use_muscles = bpy.props.BoolProperty(
+        name="Use Humanoid muscles (WIP)", default=False,
+        description="WIP: approximate Unity Humanoid muscle/finger conversion; requires Avatar solver parity")
+
 
 def unregister():
     del bpy.types.Scene.puppetvmc_address
@@ -111,5 +119,8 @@ def unregister():
     del bpy.types.Scene.puppetvmc_use_openvr_fingers
     del bpy.types.Scene.puppetvmc_calib_delay
     del bpy.types.Scene.puppetvmc_recording
+    del bpy.types.Scene.puppetvmc_animation_file
+    del bpy.types.Scene.puppetvmc_animation_playing
+    del bpy.types.Scene.puppetvmc_animation_use_muscles
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
