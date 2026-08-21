@@ -1,6 +1,7 @@
 import bpy
 
 from .openvr_bridge import OPENVR_AVAILABLE
+from .bones import get_bone_map_conflicts
 
 
 class PUPPETVMC_PT_panel(bpy.types.Panel):
@@ -35,6 +36,21 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
                           depress=scene.puppetvmc_recording,
                           text="Stop Recording" if scene.puppetvmc_recording else "Start Recording")
 
+        # --- Local Unity animation player ---
+        animation_box = layout.box()
+        animation_box.label(text="Unity Animation (.anim) [WIP]")
+        animation_box.prop(scene, "puppetvmc_animation_file", text="File")
+        animation_box.prop(scene, "puppetvmc_animation_use_muscles")
+        animation_row = animation_box.row(align=True)
+        animation_row.operator("puppetvmc.load_animation", text="Import")
+        animation_row.operator("puppetvmc.bake_animation", text="Bake to Timeline")
+        animation_row.operator(
+            "puppetvmc.play_animation",
+            text="Playing" if scene.puppetvmc_animation_playing else "Play",
+            depress=scene.puppetvmc_animation_playing,
+        )
+        animation_row.operator("puppetvmc.stop_animation", text="Stop")
+
         # --- Avatar Bind (Unity-style bone mapping) ---
         box = layout.box()
         box.label(text="Avatar Bind (Unity-style)")
@@ -46,6 +62,11 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
                 row.prop_search(item, "bone_name", armature.pose, "bones", text="")
             else:
                 row.prop(item, "bone_name", text="")
+        conflicts = get_bone_map_conflicts(context)
+        if conflicts:
+            box.label(text="Duplicate Bind targets: fix before Play/Bake", icon='ERROR')
+            for bone_name, vmc_names in conflicts.items():
+                box.label(text=f"{bone_name}: {', '.join(vmc_names)}", icon='ERROR')
 
         # --- Head camera ---
         box2 = layout.box()

@@ -74,6 +74,20 @@ def send_bone_pos(name, px, py, pz, qx, qy, qz, qw):
     osc_client.send_message("/VMC/Ext/Bone/Pos", [name, px, py, pz, qx, qy, qz, qw])
 
 
+def send_local_bone_pos(name, qx, qy, qz, qw):
+    osc_client.send_message(
+        "/PuppetVMC/Anim/LocalBone/Pos", [name, qx, qy, qz, qw]
+    )
+
+
+def send_anim_muscle(name, value):
+    osc_client.send_message("/PuppetVMC/Anim/Muscle", [name, value])
+
+
+def send_anim_finger(name, curl, spread):
+    osc_client.send_message("/PuppetVMC/Anim/Finger", [name, curl, spread])
+
+
 def send_tra_pos(name, px, py, pz, qx, qy, qz, qw):
     osc_client.send_message("/VMC/Ext/Tra/Pos", [name, px, py, pz, qx, qy, qz, qw])
 
@@ -547,6 +561,8 @@ class UnityAnimation:
             at_time = min(elapsed, self.duration)
 
         rotations = {}
+        muscles = {}
+        fingers = {}
         for bone_name, components in self.rotation_tracks.items():
             values = [self._sample_curve(components.get(component), at_time)
                       for component in "xyzw"]
@@ -555,13 +571,8 @@ class UnityAnimation:
                 rotations[bone_name] = tuple(value / length for value in values) \
                     if length > 1e-9 else (0.0, 0.0, 0.0, 1.0)
 
-        muscle_angles = {}
-        for bone_name, axis, keys in self.muscle_tracks.values():
-            muscle_angles.setdefault(bone_name, [0.0, 0.0, 0.0])[axis] += \
-                self._sample_curve(keys, at_time) * 90.0
-        for bone_name, angles in muscle_angles.items():
-            if bone_name not in rotations:
-                rotations[bone_name] = muscle_angles_to_quat(*angles)
+        for attribute, (_, _, keys) in self.muscle_tracks.items():
+            muscles[attribute] = self._sample_curve(keys, at_time)
 
         for bone_name, (curl_keys, spread_keys) in self.finger_tracks.items():
             curl = self._sample_curve(curl_keys, at_time)
@@ -569,10 +580,9 @@ class UnityAnimation:
             if curl is None:
                 continue
             spread_sign = 1.0 if bone_name.startswith("Left") else -1.0
-            rotations[bone_name] = muscle_angles_to_quat(
-                math.degrees(curl),
-                math.degrees(spread * spread_sign) if bone_name.endswith("Proximal") else 0.0,
-                0.0,
+            fingers[bone_name] = (
+                curl,
+                spread * spread_sign if bone_name.endswith("Proximal") else 0.0,
             )
 
         positions = {}
@@ -586,7 +596,7 @@ class UnityAnimation:
             if self.keep_original_position_y:
                 root_values[1] = 0.0
             positions["hips_bonepos"] = tuple(root_values)
-        return rotations, positions
+        return rotations, positions, muscles, fingers
 
 
 # ---------------------------------------------------------------------------
@@ -807,7 +817,15 @@ def tick():
     if animation is not None:
         elapsed = (time.perf_counter() - animation_started_at
                    if animation_playing else animation_elapsed)
-        animation_rotations, animation_positions = animation.sample(elapsed)
+        animation_rotations, animation_positions, animation_muscles, animation_fingers = animation.sample(elapsed)
+    else:
+        animation_muscles = {}
+        animation_fingers = {}
+
+    for name, value in animation_muscles.items():
+        send_anim_muscle(name, value)
+    for name, (curl, spread) in animation_fingers.items():
+        send_anim_finger(name, curl, spread)
 
     for bone in ROTATION_BONES:
         if bone in animation_rotations:

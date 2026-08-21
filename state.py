@@ -27,3 +27,9 @@ recorder_queue = deque()  # deque of raw packets {timestamp, address, args}
 recording_start_time = None
 recording_start_frame = None
 recording_fps = None  # FPS announced by the animation emulator, if provided.
+
+# Local Unity .anim player. It is only sampled when the user starts playback;
+# the normal /VMC/Ext receiver path remains independent.
+animation_clip = None
+animation_started_at = None
+animation_elapsed = 0.0

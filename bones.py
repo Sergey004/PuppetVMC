@@ -63,6 +63,18 @@ def get_bone_map(context):
     return result
 
 
+def get_bone_map_conflicts(context):
+    """Return Blender target bones that are assigned to multiple VMC slots."""
+    targets = {}
+    for vmc_name, bone_name in get_bone_map(context).items():
+        targets.setdefault(bone_name, []).append(vmc_name)
+    return {
+        bone_name: vmc_names
+        for bone_name, vmc_names in targets.items()
+        if len(vmc_names) > 1
+    }
+
+
 def build_bone_cache(armature):
     """One-time cache built at Connect.
 
@@ -139,3 +151,15 @@ def apply_bone(bone_cache, vmc_name, px, py, pz, qx, qy, qz, qw):
             anchored_pos = world_pos - state.calibration["origin"]
             local = root_q.inverted() @ (anchored_pos - hips_hl)
             root_pbone.location = local
+
+
+def apply_local_bone(bone_cache, vmc_name, qx, qy, qz, qw):
+    """Apply a Unity local rotation without world-space parent conjugation."""
+    if bone_cache is None:
+        return
+    entry = bone_cache["bones"].get(vmc_name)
+    if entry is None:
+        return
+    pbone = entry.pose_bone
+    pbone.rotation_mode = 'QUATERNION'
+    pbone.rotation_quaternion = convert_rotation(qx, qy, qz, qw)
