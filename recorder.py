@@ -42,7 +42,7 @@ def bake_recording(context):
     if armature is None:
         return
     scene = context.scene
-    fps = scene.render.fps
+    fps = state.recording_fps or scene.render.fps
     bone_map = get_bone_map(context)
     bone_cache = state.bone_cache
     if bone_cache is None:
@@ -200,3 +200,4 @@ def bake_recording(context):
     state.recorder_queue.clear()
     state.recording_start_time = None
     state.recording_start_frame = None
+    state.recording_fps = None

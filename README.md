@@ -54,6 +54,32 @@ real test — expect `AttributeError` or bpy API mismatches.
 5. Map each VMC slot to a bone of your rig.
 6. Click **Connect**, then stand in a T-pose and click **Calibrate**.
 
+### Unity animation emulator
+
+`tools/vmc_emulator.py` can load a Unity `.anim` clip and send its sampled
+motion to the add-on. Keep the add-on connected on the same UDP port, load an
+animation, then press **Play**. The emulator sends these control messages to
+the add-on in addition to the normal VMC bone packets:
+
+- `/PuppetVMC/Record/Start` starts raw OSC recording in Blender.
+- `/PuppetVMC/Record/Stop` stops recording and bakes the captured packets into
+  a Blender Action.
+
+The Start message carries the Unity clip's `m_SampleRate` as its first OSC
+argument. The recorder uses that FPS when converting packet timestamps to
+Blender frames, so the baked Action keeps the source animation timing.
+
+`Pause` and `Clear Animation` send the stop command. The control packets are
+handled on Blender's main timer thread, so they are safe to use with the
+existing recorder.
+
+Finger muscle curves such as `LeftHand.Index.1 Stretched` and `Spread` are
+converted to the corresponding 30 VMC finger slots and sent as regular
+`/VMC/Ext/Bone/Pos` packets. Run **Refresh Bone List** and map the finger slots
+to your armature before playback. The conversion is an approximation of
+Unity's Humanoid solver: `Stretched` drives curl and `Spread` drives the
+proximal joint's side rotation.
+
 Calibrate now **only resets the root position origin** (`state.calibration["origin"]`).
 Rotation baseline is no longer used — the add-on now applies rotations
 absolutely using `parent_quaternion` conjugation (matching VMC4B's approach),

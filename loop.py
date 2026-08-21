@@ -7,6 +7,31 @@ from .openvr_bridge import poll_openvr_fingers, poll_record_buttons
 from .constants import ROOT_HUMANOID_BONE
 
 
+def _set_recording_from_osc(context, enabled, args=None):
+    """Start or stop the Blender recorder from an emulator control packet."""
+    if context.scene.puppetvmc_recording == enabled:
+        return
+
+    from . import recorder
+    import time
+
+    if enabled:
+        context.scene.puppetvmc_recording = True
+        recorder.start_recording(context)
+        state.recording_start_time = time.time()
+        state.recording_fps = None
+        if args:
+            try:
+                announced_fps = float(args[0])
+                if announced_fps > 0.0:
+                    state.recording_fps = announced_fps
+            except (TypeError, ValueError):
+                pass
+    else:
+        recorder.bake_recording(context)
+        context.scene.puppetvmc_recording = False
+
+
 def _record_frame(context, armature, bone_map):
     """Advances the timeline by one frame and keyframes every mapped bone.
     Plain keyframe_insert() only — avoids the action.groups.new() bug that
@@ -47,6 +72,12 @@ def process_queue(context):
         address = item.get("address")
         args = item.get("args", [])
         timestamp = item.get("timestamp")
+        if address == "/PuppetVMC/Record/Start":
+            _set_recording_from_osc(context, True, args)
+            continue
+        if address == "/PuppetVMC/Record/Stop":
+            _set_recording_from_osc(context, False)
+            continue
         # VMC4B-style recording: store raw packets
         if context.scene.puppetvmc_recording:
             if address and address.startswith("/VMC/Ext/"):

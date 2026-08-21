@@ -26,3 +26,4 @@ from collections import deque
 recorder_queue = deque()  # deque of raw packets {timestamp, address, args}
 recording_start_time = None
 recording_start_frame = None
+recording_fps = None  # FPS announced by the animation emulator, if provided.
