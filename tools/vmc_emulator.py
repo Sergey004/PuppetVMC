@@ -99,6 +99,20 @@ def euler_to_quat(pitch_deg, yaw_deg, roll_deg):
     return qx, qy, qz, qw
 
 
+def muscle_angles_to_quat(x_deg, y_deg, z_deg):
+    """Convert Unity muscle XYZ angles to an (x, y, z, w) quaternion."""
+    x, y, z = (math.radians(value) for value in (x_deg, y_deg, z_deg))
+    cx, sx = math.cos(x * 0.5), math.sin(x * 0.5)
+    cy, sy = math.cos(y * 0.5), math.sin(y * 0.5)
+    cz, sz = math.cos(z * 0.5), math.sin(z * 0.5)
+    return (
+        sx * cy * cz - cx * sy * sz,
+        cx * sy * cz + sx * cy * sz,
+        cx * cy * sz - sx * sy * cz,
+        cx * cy * cz + sx * sy * sz,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Vector math for photo-pose swing rotation (no numpy dependency).
 # ---------------------------------------------------------------------------
@@ -343,6 +357,9 @@ _ANIM_ATTRIBUTE_RE = re.compile(r"^\s+attribute: (.+?)\s*$")
 _ANIM_DURATION_RE = re.compile(r"^\s+m_StopTime: ([^\s]+)\s*$")
 _ANIM_SAMPLE_RATE_RE = re.compile(r"^\s+m_SampleRate: ([^\s]+)\s*$")
 _ANIM_LOOP_RE = re.compile(r"^\s+m_LoopTime: ([01])\s*$")
+_ANIM_KEEP_POSITION_RE = re.compile(
+    r"^\s+m_KeepOriginalPosition(Y|XZ): ([01])\s*$"
+)
 
 
 def _finish_animation_curve(curves, attribute, key_values):
@@ -413,6 +430,8 @@ class UnityAnimation:
         self.duration = 0.0
         self.sample_rate = float(SEND_RATE_HZ)
         self.loop = False
+        self.keep_original_position_y = False
+        self.keep_original_position_xz = False
         self._read(path)
         self.rotation_tracks = self._build_tracks("Q")
         self.position_tracks = self._build_tracks("T")
@@ -455,6 +474,13 @@ class UnityAnimation:
                 loop_match = _ANIM_LOOP_RE.match(line)
                 if loop_match:
                     self.loop = loop_match.group(1) == "1"
+                keep_position_match = _ANIM_KEEP_POSITION_RE.match(line)
+                if keep_position_match:
+                    keep_name, keep_value = keep_position_match.groups()
+                    if keep_name == "Y":
+                        self.keep_original_position_y = keep_value == "1"
+                    else:
+                        self.keep_original_position_xz = keep_value == "1"
 
                 attribute_match = _ANIM_ATTRIBUTE_RE.match(line)
                 if attribute_match:
@@ -535,7 +561,7 @@ class UnityAnimation:
                 self._sample_curve(keys, at_time) * 90.0
         for bone_name, angles in muscle_angles.items():
             if bone_name not in rotations:
-                rotations[bone_name] = euler_to_quat(*angles)
+                rotations[bone_name] = muscle_angles_to_quat(*angles)
 
         for bone_name, (curl_keys, spread_keys) in self.finger_tracks.items():
             curl = self._sample_curve(curl_keys, at_time)
@@ -543,7 +569,7 @@ class UnityAnimation:
             if curl is None:
                 continue
             spread_sign = 1.0 if bone_name.startswith("Left") else -1.0
-            rotations[bone_name] = euler_to_quat(
+            rotations[bone_name] = muscle_angles_to_quat(
                 math.degrees(curl),
                 math.degrees(spread * spread_sign) if bone_name.endswith("Proximal") else 0.0,
                 0.0,
@@ -554,6 +580,11 @@ class UnityAnimation:
         root_values = [self._sample_curve(root_components.get(component), at_time)
                        for component in "xyz"]
         if all(value is not None for value in root_values):
+            if self.keep_original_position_xz:
+                root_values[0] = 0.0
+                root_values[2] = 0.0
+            if self.keep_original_position_y:
+                root_values[1] = 0.0
             positions["hips_bonepos"] = tuple(root_values)
         return rotations, positions
 

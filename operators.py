@@ -89,6 +89,26 @@ class PUPPETVMC_OT_recalibrate(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class PUPPETVMC_OT_force_t_pose(bpy.types.Operator):
+    bl_idname = "puppetvmc.force_t_pose"
+    bl_label = "Force T-Pose"
+    bl_description = "Reset all pose bones to the armature rest pose"
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.puppetvmc_armature is not None
+
+    def execute(self, context):
+        armature = context.scene.puppetvmc_armature
+        for pose_bone in armature.pose.bones:
+            pose_bone.matrix_basis.identity()
+
+        state.calibration["origin"] = None
+        state.calibration["rotations"] = {}
+        self.report({'INFO'}, "Armature reset to rest/T-pose")
+        return {'FINISHED'}
+
+
 class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
     bl_idname = "puppetvmc.start_calibration_timer"
     bl_label = "Calibrate in 5s"
@@ -209,6 +229,7 @@ classes = (
     PUPPETVMC_OT_connect,
     PUPPETVMC_OT_disconnect,
     PUPPETVMC_OT_recalibrate,
+    PUPPETVMC_OT_force_t_pose,
     PUPPETVMC_OT_start_calibration_timer,
     PUPPETVMC_OT_init_bone_map,
     PUPPETVMC_OT_install_openvr,
