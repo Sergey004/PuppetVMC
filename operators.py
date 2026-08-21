@@ -2,6 +2,7 @@ import sys
 import os
 import subprocess
 import time
+import math
 
 import bpy
 
@@ -9,8 +10,9 @@ from . import state
 from .osc import OSCReceiver
 from .openvr_bridge import openvr_start, openvr_stop, VENDOR_DIR
 from .loop import process_queue
-from .bones import build_bone_cache
+from .bones import build_bone_cache, get_bone_map_conflicts
 from .constants import FRAME_RATE, VMC_BONE_SLOTS
+from .unity_animation import UnityAnimationClip, apply_clip, apply_clip_to_armature
 
 
 class PUPPETVMC_OT_connect(bpy.types.Operator):
@@ -225,6 +227,167 @@ class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class PUPPETVMC_OT_load_animation(bpy.types.Operator):
+    bl_idname = "puppetvmc.load_animation"
+    bl_label = "Load Unity .anim"
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            clip = UnityAnimationClip(self.filepath)
+        except (OSError, ValueError) as error:
+            self.report({'ERROR'}, f"Could not load Unity animation: {error}")
+            return {'CANCELLED'}
+        state.animation_clip = clip
+        state.animation_elapsed = 0.0
+        context.scene.puppetvmc_animation_file = self.filepath
+        context.scene.puppetvmc_animation_playing = False
+        self.report({'INFO'}, f"Loaded {os.path.basename(self.filepath)} ({clip.sample_rate:g} FPS)")
+        return {'FINISHED'}
+
+
+class PUPPETVMC_OT_play_animation(bpy.types.Operator):
+    bl_idname = "puppetvmc.play_animation"
+    bl_label = "Play Animation"
+
+    _timer = None
+
+    def execute(self, context):
+        if state.animation_clip is None:
+            self.report({'ERROR'}, "Load a Unity .anim file first")
+            return {'CANCELLED'}
+        if context.scene.puppetvmc_armature is None:
+            self.report({'ERROR'}, "Pick an armature first")
+            return {'CANCELLED'}
+        if context.scene.puppetvmc_running:
+            self.report({'ERROR'}, "Disconnect VMC before playing a local animation")
+            return {'CANCELLED'}
+        conflicts = get_bone_map_conflicts(context)
+        if conflicts:
+            details = "; ".join(
+                f"{bone}: {', '.join(names)}"
+                for bone, names in conflicts.items()
+            )
+            self.report({'ERROR'}, f"Duplicate Bind targets: {details}")
+            return {'CANCELLED'}
+        armature = context.scene.puppetvmc_armature
+        if armature.animation_data is not None:
+            # Do not delete the old Action; detach it so it cannot fight the
+            # direct Unity player while the clip is running.
+            armature.animation_data.action = None
+        if state.bone_cache is None:
+            state.bone_cache = build_bone_cache(armature)
+        state.animation_started_at = time.perf_counter() - state.animation_elapsed
+        context.scene.puppetvmc_animation_playing = True
+        self._timer = context.window_manager.event_timer_add(
+            1.0 / FRAME_RATE, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            if state.animation_started_at is not None:
+                state.animation_elapsed = time.perf_counter() - state.animation_started_at
+            apply_clip_to_armature(
+                context.scene.puppetvmc_armature,
+                state.bone_cache,
+                state.animation_clip,
+                state.animation_elapsed,
+                context.scene.puppetvmc_animation_use_muscles,
+            )
+        if not context.scene.puppetvmc_animation_playing:
+            self.cancel(context)
+            return {'CANCELLED'}
+        return {'PASS_THROUGH'}
+
+    def cancel(self, context):
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+
+
+class PUPPETVMC_OT_stop_animation(bpy.types.Operator):
+    bl_idname = "puppetvmc.stop_animation"
+    bl_label = "Stop Animation"
+
+    def execute(self, context):
+        if state.animation_started_at is not None:
+            state.animation_elapsed = time.perf_counter() - state.animation_started_at
+        context.scene.puppetvmc_animation_playing = False
+        return {'FINISHED'}
+
+
+class PUPPETVMC_OT_bake_animation(bpy.types.Operator):
+    bl_idname = "puppetvmc.bake_animation"
+    bl_label = "Bake to Timeline"
+    bl_description = "Sample the Unity clip and create a Blender Action on the armature"
+
+    def execute(self, context):
+        if state.animation_clip is None:
+            self.report({'ERROR'}, "Load a Unity .anim file first")
+            return {'CANCELLED'}
+        if context.scene.puppetvmc_running or context.scene.puppetvmc_animation_playing:
+            self.report({'ERROR'}, "Stop VMC and animation playback before baking")
+            return {'CANCELLED'}
+
+        armature = context.scene.puppetvmc_armature
+        if armature is None:
+            self.report({'ERROR'}, "Pick an armature first")
+            return {'CANCELLED'}
+        conflicts = get_bone_map_conflicts(context)
+        if conflicts:
+            self.report({'ERROR'}, "Fix duplicate Bind targets before baking")
+            return {'CANCELLED'}
+        if state.bone_cache is None:
+            state.bone_cache = build_bone_cache(armature)
+        if state.bone_cache is None:
+            self.report({'ERROR'}, "Build the Avatar Bind map first")
+            return {'CANCELLED'}
+
+        clip = state.animation_clip
+        fps = clip.sample_rate if clip.sample_rate > 0 else 30.0
+        frame_end = max(1, int(math.ceil(clip.duration * fps)))
+        action = bpy.data.actions.new(name=f"Unity {os.path.basename(clip.path)}")
+        action.use_fake_user = True
+        if armature.animation_data is None:
+            armature.animation_data_create()
+        armature.animation_data.action = action
+        state.calibration["origin"] = None
+        use_muscles = context.scene.puppetvmc_animation_use_muscles
+        original_frame = context.scene.frame_current
+        original_fps = context.scene.render.fps
+        original_fps_base = context.scene.render.fps_base
+        context.scene.render.fps = max(1, int(round(fps)))
+        context.scene.render.fps_base = 1.0
+
+        for frame in range(1, frame_end + 1):
+            elapsed = (frame - 1) / fps
+            context.scene.frame_set(frame)
+            apply_clip(state.bone_cache, clip, elapsed, use_muscles=use_muscles)
+            for item in context.scene.puppetvmc_bone_map:
+                if not item.bone_name:
+                    continue
+                pose_bone = armature.pose.bones.get(item.bone_name)
+                if pose_bone is None:
+                    continue
+                pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=frame)
+                if item.vmc_name == "Hips":
+                    pose_bone.keyframe_insert(data_path="location", frame=frame)
+
+        action.frame_start = 1
+        action.frame_end = frame_end
+        context.scene.frame_start = 1
+        context.scene.frame_end = frame_end
+        context.scene.frame_set(original_frame if 1 <= original_frame <= frame_end else 1)
+        self.report({'INFO'}, f"Baked {frame_end} frames at {fps:g} FPS to {action.name}")
+        return {'FINISHED'}
+
+
 classes = (
     PUPPETVMC_OT_connect,
     PUPPETVMC_OT_disconnect,
@@ -234,6 +397,10 @@ classes = (
     PUPPETVMC_OT_init_bone_map,
     PUPPETVMC_OT_install_openvr,
     PUPPETVMC_OT_toggle_record,
+    PUPPETVMC_OT_load_animation,
+    PUPPETVMC_OT_play_animation,
+    PUPPETVMC_OT_stop_animation,
+    PUPPETVMC_OT_bake_animation,
 )
 
 

@@ -54,7 +54,7 @@ real test — expect `AttributeError` or bpy API mismatches.
 5. Map each VMC slot to a bone of your rig.
 6. Click **Connect**, then stand in a T-pose and click **Calibrate**.
 
-### Unity animation emulator
+### Unity animation emulator (WIP\Broken)
 
 `tools/vmc_emulator.py` can load a Unity `.anim` clip and send its sampled
 motion to the add-on. Keep the add-on connected on the same UDP port, load an
@@ -74,11 +74,38 @@ handled on Blender's main timer thread, so they are safe to use with the
 existing recorder.
 
 Finger muscle curves such as `LeftHand.Index.1 Stretched` and `Spread` are
-converted to the corresponding 30 VMC finger slots and sent as regular
-`/VMC/Ext/Bone/Pos` packets. Run **Refresh Bone List** and map the finger slots
+converted inside the add-on to the corresponding 30 VMC finger slots. Run
+**Refresh Bone List** and map the finger slots
 to your armature before playback. The conversion is an approximation of
 Unity's Humanoid solver: `Stretched` drives curl and `Spread` drives the
 proximal joint's side rotation.
+
+For animation playback, the emulator sends raw values through the private
+addresses `/PuppetVMC/Anim/Muscle` and `/PuppetVMC/Anim/Finger`. Their
+conversion happens inside the add-on, where the Blender bind map and armature
+rest pose are available. Real tracker messages under `/VMC/Ext/` use the
+unchanged VMC path.
+
+### Built-in Unity animation player (WIP\Broken)
+
+The add-on can now import and play a Unity `.anim` file directly from the VMC
+panel. Select an armature, refresh and fill the bind map, click **Import** in
+the **Unity Animation (.anim)** section, then click **Play**. UDP Connect is
+not required for local playback: the player owns its own timer and writes
+directly to the bound pose bones. Playback is blocked while VMC Connect is
+active, so the two sources cannot fight over the same armature. **Stop**
+returns control to the armature.
+
+The Humanoid muscle/finger conversion is **WIP**. It is intentionally kept as
+an experimental implementation for future Unity Avatar solver compatibility;
+it is not expected to match Unity exactly yet.
+
+The importer honors Unity's `m_KeepOriginalOrientation`,
+`m_KeepOriginalPositionY`, and `m_KeepOriginalPositionXZ` settings. Use
+**Bake to Timeline** to sample the clip at its `m_SampleRate` and create a
+normal Blender Action with the current bind map. Humanoid muscle conversion is
+marked experimental because Blender does not have Unity's Avatar solver; it
+must be enabled explicitly with **Use Humanoid muscles**.
 
 Calibrate now **only resets the root position origin** (`state.calibration["origin"]`).
 Rotation baseline is no longer used — the add-on now applies rotations

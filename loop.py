@@ -1,7 +1,9 @@
 """Main tick, called from the Connect operator's modal timer."""
 
+import time
+
 from . import state
-from .bones import apply_bone, get_bone_map  # get_bone_map kept for panel UI; process_queue uses state.bone_cache
+from .bones import apply_bone, apply_local_bone, get_bone_map  # get_bone_map kept for panel UI; process_queue uses state.bone_cache
 from .cameras import update_head_camera, update_xr_camera
 from .openvr_bridge import poll_openvr_fingers, poll_record_buttons
 from .constants import ROOT_HUMANOID_BONE
@@ -49,7 +51,7 @@ def _record_frame(context, armature, bone_map):
 
 
 def process_queue(context):
-    if state.receiver is None:
+    if state.receiver is None and not context.scene.puppetvmc_animation_playing:
         return
 
     # --- Delayed calibration: fires once the countdown started via
@@ -66,8 +68,10 @@ def process_queue(context):
 
     armature = context.scene.puppetvmc_armature
     bone_map = get_bone_map(context)
+    animation_muscles = {}
+    animation_fingers = {}
 
-    while not state.receiver.queue.empty():
+    while state.receiver is not None and not state.receiver.queue.empty():
         item = state.receiver.queue.get()
         address = item.get("address")
         args = item.get("args", [])
@@ -78,14 +82,38 @@ def process_queue(context):
         if address == "/PuppetVMC/Record/Stop":
             _set_recording_from_osc(context, False)
             continue
+        if address == "/PuppetVMC/Anim/Muscle" and len(args) >= 2:
+            if context.scene.puppetvmc_recording:
+                state.recorder_queue.append(item)
+            animation_muscles[str(args[0])] = float(args[1])
+            continue
+        if address == "/PuppetVMC/Anim/Finger" and len(args) >= 3:
+            if context.scene.puppetvmc_recording:
+                state.recorder_queue.append(item)
+            animation_fingers[str(args[0])] = (float(args[1]), float(args[2]))
+            continue
         # VMC4B-style recording: store raw packets
         if context.scene.puppetvmc_recording:
-            if address and address.startswith("/VMC/Ext/"):
+            if address and (address.startswith("/VMC/Ext/") or
+                            address == "/PuppetVMC/Anim/LocalBone/Pos"):
                 state.recorder_queue.append(item)
         # Apply bone data
         if armature and address == "/VMC/Ext/Bone/Pos" and len(args) >= 8:
             name, px, py, pz, qx, qy, qz, qw = args[:8]
             apply_bone(state.bone_cache, name, px, py, pz, qx, qy, qz, qw)
+        if armature and address == "/PuppetVMC/Anim/LocalBone/Pos" and len(args) >= 5:
+            name, qx, qy, qz, qw = args[:5]
+            apply_local_bone(state.bone_cache, name, qx, qy, qz, qw)
+
+    if armature and (animation_muscles or animation_fingers):
+        from .unity_animation import apply_pose
+        apply_pose(state.bone_cache, animation_muscles, animation_fingers)
+
+    if armature and context.scene.puppetvmc_animation_playing and state.animation_clip:
+        from .unity_animation import apply_clip
+        elapsed = time.perf_counter() - state.animation_started_at
+        state.animation_elapsed = elapsed
+        apply_clip(state.bone_cache, state.animation_clip, elapsed)
 
     if context.scene.puppetvmc_use_openvr_fingers and armature:
         poll_openvr_fingers(armature)

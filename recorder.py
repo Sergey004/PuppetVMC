@@ -99,6 +99,28 @@ def bake_recording(context):
                         lst[-1] = (frame, val)
                     else:
                         lst.append((frame, val))
+        elif address == "/PuppetVMC/Anim/LocalBone/Pos" and len(args) >= 5:
+            vmc_name = args[0]
+            bone_name = bone_map.get(vmc_name)
+            if not bone_name:
+                continue
+            try:
+                qx, qy, qz, qw = args[1], args[2], args[3], args[4]
+                local_q = convert_rotation(qx, qy, qz, qw)
+            except Exception:
+                continue
+            if bone_name not in data_bones:
+                data_bones[bone_name] = {}
+            path = "rotation_quaternion"
+            if path not in data_bones[bone_name]:
+                data_bones[bone_name][path] = [[] for _ in range(4)]
+            for i in range(4):
+                lst = data_bones[bone_name][path][i]
+                val = local_q[i]
+                if lst and lst[-1][0] == frame:
+                    lst[-1] = (frame, val)
+                else:
+                    lst.append((frame, val))
         elif address == "/VMC/Ext/Bone/Pos" and len(args) >= 8:
             vmc_name = args[0]
             bone_name = bone_map.get(vmc_name)
