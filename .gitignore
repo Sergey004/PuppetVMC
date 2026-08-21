@@ -221,3 +221,4 @@ __marimo__/
 HANDOFF.md
 vendor/
 vendor/pythonosc/__pycache__
+*.anim
