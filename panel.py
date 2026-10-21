@@ -34,22 +34,49 @@ def _draw_face_tracking(layout, scene, armature):
             face_box.label(text=f"... and {len(values) - 12} more")
 
     eye_box = face_box.box()
-    eye_box.label(text="Eye gaze (v2/EyeLeftX/Y and EyeRightX/Y)")
+    eye_box.label(
+        text="Gaze: EyeLeftX/Y and EyeRightX/Y, or VRChat pitch/yaw"
+    )
+    eye_box.prop(scene, "puppetvmc_face_eye_link_gaze")
+    if scene.puppetvmc_face_eye_link_gaze:
+        eye_box.prop(scene, "puppetvmc_face_eye_mirror_right")
     if armature:
-        eye_box.prop_search(
-            scene, "puppetvmc_face_left_eye_bone",
-            armature.pose, "bones", text="Left Eye",
-        )
-        eye_box.prop_search(
-            scene, "puppetvmc_face_right_eye_bone",
-            armature.pose, "bones", text="Right Eye",
-        )
+        for side, label in (("left", "Left"), ("right", "Right")):
+            eye_box.prop_search(
+                scene, f"puppetvmc_face_{side}_eye_bone",
+                armature.pose, "bones", text=f"{label} Eye",
+            )
+            side_box = eye_box.box()
+            side_box.label(text=f"{label} eye rotation")
+            row = side_box.row(align=True)
+            row.prop(
+                scene, f"puppetvmc_face_{side}_eye_horizontal_axis",
+                text="Horizontal Axis",
+            )
+            row.prop(
+                scene, f"puppetvmc_face_{side}_eye_vertical_axis",
+                text="Vertical Axis",
+            )
+            row = side_box.row(align=True)
+            row.prop(
+                scene, f"puppetvmc_face_{side}_eye_invert_horizontal",
+            )
+            row.prop(
+                scene, f"puppetvmc_face_{side}_eye_invert_vertical",
+            )
     else:
         eye_box.label(text="Select an armature to map eye bones")
     eye_box.prop(scene, "puppetvmc_face_eye_max_angle")
+    eye_box.label(text="Legacy: invert both eyes")
     row = eye_box.row(align=True)
-    row.prop(scene, "puppetvmc_face_eye_invert_horizontal")
-    row.prop(scene, "puppetvmc_face_eye_invert_vertical")
+    row.prop(
+        scene, "puppetvmc_face_eye_invert_horizontal",
+        text="Invert Horizontal (both)",
+    )
+    row.prop(
+        scene, "puppetvmc_face_eye_invert_vertical",
+        text="Invert Vertical (both)",
+    )
 
     shape_box = face_box.box()
     shape_box.label(text="Eyelids")

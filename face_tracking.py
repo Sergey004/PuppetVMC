@@ -47,7 +47,9 @@ def capture_eye_baselines(armature, scene):
     return baselines
 
 
-def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
+def _apply_eye(
+        armature, bone_name, horizontal, vertical, side, scene, baselines,
+        mirror_horizontal=False):
     if armature is None or not bone_name:
         return
     pose_bone = armature.pose.bones.get(bone_name)
@@ -56,14 +58,17 @@ def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
         return
 
     limit = scene.puppetvmc_face_eye_max_angle
-    horizontal_sign = -1.0 if scene.puppetvmc_face_eye_invert_horizontal else 1.0
-    vertical_sign = -1.0 if scene.puppetvmc_face_eye_invert_vertical else 1.0
-    yaw = max(-1.0, min(1.0, horizontal)) * limit * horizontal_sign
-    pitch = max(-1.0, min(1.0, vertical)) * limit * vertical_sign
-    _apply_eye_angles(armature, bone_name, yaw, pitch, baselines)
+    horizontal = max(-1.0, min(1.0, horizontal)) * limit
+    vertical = max(-1.0, min(1.0, vertical)) * limit
+    _apply_eye_angles(
+        armature, bone_name, horizontal, vertical, side, scene, baselines,
+        mirror_horizontal,
+    )
 
 
-def _apply_eye_angles(armature, bone_name, yaw, pitch, baselines):
+def _apply_eye_angles(
+        armature, bone_name, horizontal, vertical, side, scene, baselines,
+        mirror_horizontal=False):
     if armature is None or not bone_name:
         return
     pose_bone = armature.pose.bones.get(bone_name)
@@ -71,9 +76,32 @@ def _apply_eye_angles(armature, bone_name, yaw, pitch, baselines):
     if pose_bone is None or baseline is None:
         return
 
+    suffix = side.lower()
+    horizontal_sign = -1.0
+    vertical_sign = 1.0
+    if scene.puppetvmc_face_eye_invert_horizontal:
+        horizontal_sign *= -1.0
+    if scene.puppetvmc_face_eye_invert_vertical:
+        vertical_sign *= -1.0
+    if getattr(scene, f"puppetvmc_face_{suffix}_eye_invert_horizontal"):
+        horizontal_sign *= -1.0
+    if getattr(scene, f"puppetvmc_face_{suffix}_eye_invert_vertical"):
+        vertical_sign *= -1.0
+    if mirror_horizontal:
+        horizontal_sign *= -1.0
+
+    rotation = [0.0, 0.0, 0.0]
+    horizontal_axis = getattr(
+        scene, f"puppetvmc_face_{suffix}_eye_horizontal_axis"
+    )
+    vertical_axis = getattr(
+        scene, f"puppetvmc_face_{suffix}_eye_vertical_axis"
+    )
+    rotation["XYZ".index(horizontal_axis)] += horizontal * horizontal_sign
+    rotation["XYZ".index(vertical_axis)] += vertical * vertical_sign
     pose_bone.rotation_mode = 'QUATERNION'
     pose_bone.rotation_quaternion = (
-        baseline @ Euler((pitch, 0.0, -yaw), 'XYZ').to_quaternion()
+        baseline @ Euler(rotation, 'XYZ').to_quaternion()
     )
 
 
@@ -128,6 +156,11 @@ def _apply_shape_key(mesh, key_name, value):
         key_block.value = max(0.0, min(1.0, value))
 
 
+def _average_available(first, second):
+    available = [value for value in (first, second) if value is not None]
+    return sum(available) / len(available) if available else None
+
+
 def apply_face_tracking(armature, scene, values, baselines, last_received):
     stale = (
         last_received is not None
@@ -136,55 +169,103 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
     if stale:
         values = {}
 
-    for side in ("Left", "Right"):
-        horizontal = _get_value(values, f"v2/Eye{side}X")
-        vertical = _get_value(values, f"v2/Eye{side}Y")
-        tracking_angles = _get_value(
-            values, "tracking/eye/LeftRightPitchYaw"
-        )
-        if stale:
+    sides = ("Left", "Right")
+    tracking_angles = _get_value(
+        values, "tracking/eye/LeftRightPitchYaw"
+    )
+    if stale:
+        for side in sides:
             bone_name = getattr(
                 scene, f"puppetvmc_face_{side.lower()}_eye_bone"
             )
             _reset_bone(armature, bone_name, baselines)
-        elif horizontal is not None or vertical is not None:
-            _apply_eye(
-                armature,
-                getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
-                horizontal or 0.0,
-                vertical or 0.0,
-                scene,
-                baselines,
-            )
+    elif scene.puppetvmc_face_eye_link_gaze:
+        horizontal_values = [
+            _get_value(values, f"v2/Eye{side}X") for side in sides
+        ]
+        vertical_values = [
+            _get_value(values, f"v2/Eye{side}Y") for side in sides
+        ]
+        horizontal = _average_available(*horizontal_values)
+        vertical = _average_available(*vertical_values)
+        if horizontal is not None or vertical is not None:
+            for side in sides:
+                _apply_eye(
+                    armature,
+                    getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
+                    horizontal or 0.0,
+                    vertical or 0.0,
+                    side,
+                    scene,
+                    baselines,
+                    mirror_horizontal=(
+                        side == "Right"
+                        and scene.puppetvmc_face_eye_mirror_right
+                    ),
+                )
         elif tracking_angles is not None:
-            offset = 0 if side == "Left" else 2
-            pitch = max(
-                -scene.puppetvmc_face_eye_max_angle,
-                min(
-                    scene.puppetvmc_face_eye_max_angle,
-                    math.radians(tracking_angles[offset]),
-                ),
+            pitch = math.radians(
+                _average_available(tracking_angles[0], tracking_angles[2])
             )
-            yaw = max(
-                -scene.puppetvmc_face_eye_max_angle,
-                min(
-                    scene.puppetvmc_face_eye_max_angle,
-                    math.radians(tracking_angles[offset + 1]),
-                ),
+            yaw = math.radians(
+                _average_available(tracking_angles[1], tracking_angles[3])
             )
-            pitch_sign = (
-                -1.0 if scene.puppetvmc_face_eye_invert_vertical else 1.0
-            )
-            yaw_sign = (
-                -1.0 if scene.puppetvmc_face_eye_invert_horizontal else 1.0
-            )
-            _apply_eye_angles(
-                armature,
-                getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
-                yaw * yaw_sign,
-                pitch * pitch_sign,
-                baselines,
-            )
+            limit = scene.puppetvmc_face_eye_max_angle
+            pitch = max(-limit, min(limit, pitch))
+            yaw = max(-limit, min(limit, yaw))
+            for side in sides:
+                _apply_eye_angles(
+                    armature,
+                    getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
+                    yaw,
+                    pitch,
+                    side,
+                    scene,
+                    baselines,
+                    mirror_horizontal=(
+                        side == "Right"
+                        and scene.puppetvmc_face_eye_mirror_right
+                    ),
+                )
+    else:
+        for side in sides:
+            horizontal = _get_value(values, f"v2/Eye{side}X")
+            vertical = _get_value(values, f"v2/Eye{side}Y")
+            if horizontal is not None or vertical is not None:
+                _apply_eye(
+                    armature,
+                    getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
+                    horizontal or 0.0,
+                    vertical or 0.0,
+                    side,
+                    scene,
+                    baselines,
+                )
+            elif tracking_angles is not None:
+                offset = 0 if side == "Left" else 2
+                pitch = max(
+                    -scene.puppetvmc_face_eye_max_angle,
+                    min(
+                        scene.puppetvmc_face_eye_max_angle,
+                        math.radians(tracking_angles[offset]),
+                    ),
+                )
+                yaw = max(
+                    -scene.puppetvmc_face_eye_max_angle,
+                    min(
+                        scene.puppetvmc_face_eye_max_angle,
+                        math.radians(tracking_angles[offset + 1]),
+                    ),
+                )
+                _apply_eye_angles(
+                    armature,
+                    getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
+                    yaw,
+                    pitch,
+                    side,
+                    scene,
+                    baselines,
+                )
 
     mesh = scene.puppetvmc_face_mesh
     common_blink = _get_value(

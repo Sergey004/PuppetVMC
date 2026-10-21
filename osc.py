@@ -121,7 +121,12 @@ class OSCReceiver:
             pass
 
     def stop(self):
-        if self.server is not None:
-            self.server.shutdown()
+        server = self.server
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
         self._thread.join(timeout=1.0)
+        if self._thread.is_alive():
+            raise RuntimeError("OSC receiver thread did not stop")
         self.server = None

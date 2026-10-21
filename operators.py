@@ -20,6 +20,16 @@ from .constants import FRAME_RATE, VMC_BONE_SLOTS
 from .unity_animation import UnityAnimationClip, apply_clip, apply_clip_to_armature
 
 
+_REQUIRED_FACE_PROPERTIES = (
+    "puppetvmc_face_left_upper_eyelid_bone",
+    "puppetvmc_face_left_lower_eyelid_bone",
+    "puppetvmc_face_right_upper_eyelid_bone",
+    "puppetvmc_face_right_lower_eyelid_bone",
+    "puppetvmc_face_eyelid_upper_invert",
+    "puppetvmc_face_eyelid_lower_invert",
+)
+
+
 class PUPPETVMC_OT_connect(bpy.types.Operator):
     bl_idname = "puppetvmc.connect"
     bl_label = "Connect"
@@ -36,6 +46,17 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
+        missing_face_properties = [
+            name for name in _REQUIRED_FACE_PROPERTIES
+            if not hasattr(bpy.types.Scene, name)
+        ]
+        if missing_face_properties:
+            self.report(
+                {'ERROR'},
+                "Face-tracking settings are not registered. Restart Blender "
+                "and enable PuppetVMC again.",
+            )
+            return {'CANCELLED'}
         armature = scene.puppetvmc_armature
         face_only = scene.puppetvmc_face_only
         face_mesh = scene.puppetvmc_face_mesh

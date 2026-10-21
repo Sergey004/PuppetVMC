@@ -71,10 +71,18 @@ recording with **Stop Face Recording**; disconnect when finished.
 
 - Map **Left Eye** and **Right Eye** to the corresponding pose bones.
   `v2/EyeLeftX`, `v2/EyeLeftY`, `v2/EyeRightX`, and `v2/EyeRightY` drive
-  horizontal/vertical local rotations. **Max Gaze Angle** sets the angle at
-  the ends of the normalized input range; use the invert toggles if the rig
-  turns the eyes the wrong way. Gaze is applied relative to the eye bones'
-  pose when Connect starts, so disconnect/reconnect after changing the bones.
+  both eyes independently by default. The default eye setup uses local Y for
+  horizontal rotation, local X for vertical rotation, inverts horizontal
+  rotation on the right eye, and inverts vertical rotation on both eyes to
+  account for this rig orientation; change these per-eye settings if your rig
+  differs. **Link Both Eyes (average gaze)** is optional and averages both
+  input directions; it also averages the left and right angle pairs from
+  VRChat's `LeftRightPitchYaw` packet. When linked, **Mirror Right Eye
+  Horizontal** can compensate for mirrored local axes.
+  **Max Gaze Angle** sets the angle at the ends of the normalized input range.
+  The legacy invert-both controls remain available. Gaze is applied relative
+  to the eye bones' pose when Connect starts, so disconnect/reconnect after
+  changing the bones.
 - Choose a mesh with shape keys, then map **Left Blink** and **Right Blink**
   to keys driven by `v2/EyeClosedLeft` and `v2/EyeClosedRight`.
 - Brows are optional. In **Brows**, bind **Brow Up Bone**, **Left Brow Down
@@ -97,7 +105,14 @@ PuppetVMC also accepts VRChat eye-tracking OSC input:
 `/tracking/eye/LeftRightPitchYaw` (four angles in degrees: left pitch/yaw,
 right pitch/yaw) and `/tracking/eye/EyesClosedAmount` (one shared 0–1
 closure value). These can be used instead of VRCFT's avatar-parameter
-addresses. Configure the sender to target PuppetVMC's VRCFT OSC port.
+addresses. Configure the sender target as `127.0.0.1:9002` (or the configured
+**Face OSC Port**), not VRChat's usual OSC port `9000`. If the panel continues
+to say it is waiting for parameters, the sender is not reaching the add-on's
+port.
+
+After updating PuppetVMC files while Blender is open, restart Blender before
+connecting. Blender can retain already-imported add-on modules, leaving new
+recording code paired with old registered Scene properties.
 
 VRCFT's default parameter addresses are `/avatar/parameters/v2/<name>`,
 for example `/avatar/parameters/v2/EyeLeftX`. The parameter names and

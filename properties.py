@@ -110,10 +110,57 @@ def register():
         name="Max Gaze Angle", default=math.radians(20.0), min=0.0,
         max=math.radians(90.0), subtype='ANGLE',
         description="Maximum local eye-bone rotation when gaze reaches either end of its range")
+    bpy.types.Scene.puppetvmc_face_eye_link_gaze = bpy.props.BoolProperty(
+        name="Link Both Eyes (average gaze)",
+        default=False,
+        description="Use the average of both eye directions to prevent divergent gaze")
+    bpy.types.Scene.puppetvmc_face_eye_mirror_right = bpy.props.BoolProperty(
+        name="Mirror Right Eye Horizontal",
+        default=True,
+        description="Reverse the right eye's horizontal rotation for mirrored eye-bone axes")
     bpy.types.Scene.puppetvmc_face_eye_invert_horizontal = bpy.props.BoolProperty(
         name="Invert Horizontal", default=False)
     bpy.types.Scene.puppetvmc_face_eye_invert_vertical = bpy.props.BoolProperty(
         name="Invert Vertical", default=False)
+    for side in ("left", "right"):
+        setattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_horizontal_axis",
+            bpy.props.EnumProperty(
+                name="Horizontal Axis",
+                items=(
+                    ('X', "X", "Rotate around the local X axis"),
+                    ('Y', "Y", "Rotate around the local Y axis"),
+                    ('Z', "Z", "Rotate around the local Z axis"),
+                ),
+                default='Y',
+            ),
+        )
+        setattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_vertical_axis",
+            bpy.props.EnumProperty(
+                name="Vertical Axis",
+                items=(
+                    ('X', "X", "Rotate around the local X axis"),
+                    ('Y', "Y", "Rotate around the local Y axis"),
+                    ('Z', "Z", "Rotate around the local Z axis"),
+                ),
+                default='X',
+            ),
+        )
+        setattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_invert_horizontal",
+            bpy.props.BoolProperty(
+                name="Invert Horizontal", default=side == "right"
+            ),
+        )
+        setattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_invert_vertical",
+            bpy.props.BoolProperty(name="Invert Vertical", default=True),
+        )
     bpy.types.Scene.puppetvmc_face_eyelid_left_bone = bpy.props.StringProperty(
         name="Left Eyelid Bone", description="Optional bone driven by v2/EyeClosedLeft")
     bpy.types.Scene.puppetvmc_face_eyelid_right_bone = bpy.props.StringProperty(
@@ -213,8 +260,27 @@ def unregister():
     del bpy.types.Scene.puppetvmc_face_left_eye_bone
     del bpy.types.Scene.puppetvmc_face_right_eye_bone
     del bpy.types.Scene.puppetvmc_face_eye_max_angle
+    del bpy.types.Scene.puppetvmc_face_eye_link_gaze
+    del bpy.types.Scene.puppetvmc_face_eye_mirror_right
     del bpy.types.Scene.puppetvmc_face_eye_invert_horizontal
     del bpy.types.Scene.puppetvmc_face_eye_invert_vertical
+    for side in ("left", "right"):
+        delattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_horizontal_axis",
+        )
+        delattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_vertical_axis",
+        )
+        delattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_invert_horizontal",
+        )
+        delattr(
+            bpy.types.Scene,
+            f"puppetvmc_face_{side}_eye_invert_vertical",
+        )
     del bpy.types.Scene.puppetvmc_face_eyelid_left_bone
     del bpy.types.Scene.puppetvmc_face_eyelid_right_bone
     del bpy.types.Scene.puppetvmc_face_left_upper_eyelid_bone
