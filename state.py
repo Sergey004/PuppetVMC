@@ -5,6 +5,10 @@ variables directly from other files (plain reassignment doesn't propagate
 across modules — attribute assignment on the module object does)."""
 
 receiver = None  # OSCReceiver instance, see osc.py — reassigned by operators via state.receiver = ...
+face_receiver = None  # Separate OSCReceiver for VRCFaceTracking avatar parameters.
+face_tracking_values = {}
+face_tracking_last_received = None
+face_eye_baselines = {}
 
 bone_cache = None  # built once at Connect time via build_bone_cache(); holds
 # parent_quaternion conjugation data + root bookkeeping (see bones.py::build_bone_cache).

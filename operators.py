@@ -10,6 +10,11 @@ from . import state
 from .osc import OSCReceiver
 from .openvr_bridge import openvr_start, openvr_stop, VENDOR_DIR
 from .loop import process_queue
+from .face_tracking import (
+    FACE_TRACKING_TIMEOUT,
+    apply_face_tracking,
+    capture_eye_baselines,
+)
 from .bones import build_bone_cache, get_bone_map_conflicts
 from .constants import FRAME_RATE, VMC_BONE_SLOTS
 from .unity_animation import UnityAnimationClip, apply_clip, apply_clip_to_armature
@@ -46,6 +51,25 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
             state.bone_cache = None
             self.report({'ERROR'}, f"Could not bind {context.scene.puppetvmc_address}:{context.scene.puppetvmc_port} — {e}")
             return {'CANCELLED'}
+        state.face_tracking_values.clear()
+        state.face_tracking_last_received = None
+        state.face_eye_baselines = capture_eye_baselines(
+            armature, context.scene,
+        )
+        state.face_receiver = None
+        if context.scene.puppetvmc_face_tracking_enabled:
+            try:
+                state.face_receiver = OSCReceiver(
+                    context.scene.puppetvmc_address,
+                    context.scene.puppetvmc_face_tracking_port,
+                )
+            except OSError as e:
+                self.report(
+                    {'WARNING'},
+                    f"VMC connected, but VRCFaceTracking listener could not bind "
+                    f"{context.scene.puppetvmc_address}:"
+                    f"{context.scene.puppetvmc_face_tracking_port} — {e}",
+                )
         state.calibration["origin"] = None
         state.calibration["countdown_end"] = None
         if context.scene.puppetvmc_use_openvr_fingers:
@@ -63,6 +87,18 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
         if state.receiver:
             state.receiver.stop()
             state.receiver = None
+        if state.face_receiver:
+            armature = context.scene.puppetvmc_armature
+            if armature:
+                apply_face_tracking(
+                    armature,
+                    context.scene,
+                    {},
+                    state.face_eye_baselines,
+                    time.time() - FACE_TRACKING_TIMEOUT - 1.0,
+                )
+            state.face_receiver.stop()
+            state.face_receiver = None
         openvr_stop()
         if PUPPETVMC_OT_connect._timer is not None:
             context.window_manager.event_timer_remove(PUPPETVMC_OT_connect._timer)

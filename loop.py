@@ -7,6 +7,7 @@ from .bones import apply_bone, apply_local_bone, get_bone_map  # get_bone_map ke
 from .cameras import update_head_camera, update_xr_camera
 from .openvr_bridge import poll_openvr_fingers, poll_record_buttons
 from .constants import ROOT_HUMANOID_BONE
+from .face_tracking import FACE_TRACKING_TIMEOUT, apply_face_tracking
 
 
 def _set_recording_from_osc(context, enabled, args=None):
@@ -51,7 +52,8 @@ def _record_frame(context, armature, bone_map):
 
 
 def process_queue(context):
-    if state.receiver is None and not context.scene.puppetvmc_animation_playing:
+    if (state.receiver is None and state.face_receiver is None
+            and not context.scene.puppetvmc_animation_playing):
         return
 
     # --- Delayed calibration: fires once the countdown started via
@@ -105,9 +107,33 @@ def process_queue(context):
             name, qx, qy, qz, qw = args[:5]
             apply_local_bone(state.bone_cache, name, qx, qy, qz, qw)
 
+    while state.face_receiver is not None and not state.face_receiver.queue.empty():
+        item = state.face_receiver.queue.get()
+        address = item.get("address", "")
+        args = item.get("args", [])
+        prefix = "/avatar/parameters/"
+        if address.startswith(prefix) and args:
+            value = args[0]
+            if isinstance(value, (int, float, bool)):
+                state.face_tracking_values[address[len(prefix):]] = float(value)
+                state.face_tracking_last_received = item.get("timestamp")
+
     if armature and (animation_muscles or animation_fingers):
         from .unity_animation import apply_pose
         apply_pose(state.bone_cache, animation_muscles, animation_fingers)
+
+    if armature and state.face_receiver is not None:
+        apply_face_tracking(
+            armature,
+            context.scene,
+            state.face_tracking_values,
+            state.face_eye_baselines,
+            state.face_tracking_last_received,
+        )
+        if (state.face_tracking_last_received is not None
+                and time.time() - state.face_tracking_last_received > FACE_TRACKING_TIMEOUT):
+            state.face_tracking_values.clear()
+            state.face_tracking_last_received = None
 
     if armature and context.scene.puppetvmc_animation_playing and state.animation_clip:
         from .unity_animation import apply_clip

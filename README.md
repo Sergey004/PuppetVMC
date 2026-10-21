@@ -54,6 +54,41 @@ real test — expect `AttributeError` or bpy API mismatches.
 5. Map each VMC slot to a bone of your rig.
 6. Click **Connect**, then stand in a T-pose and click **Calibrate**.
 
+### VRCFaceTracking
+
+Enable **Receive VRCFaceTracking** before clicking **Connect**. PuppetVMC
+PuppetVMC listens on a separate UDP port (default `9001`) for OSC parameters
+and maps eye gaze, eyelids, and optionally brows:
+
+- Map **Left Eye** and **Right Eye** to the corresponding pose bones.
+  `v2/EyeLeftX`, `v2/EyeLeftY`, `v2/EyeRightX`, and `v2/EyeRightY` drive
+  horizontal/vertical local rotations. **Max Gaze Angle** sets the angle at
+  the ends of the normalized input range; use the invert toggles if the rig
+  turns the eyes the wrong way. Gaze is applied relative to the eye bones'
+  pose when Connect starts, so disconnect/reconnect after changing the bones.
+- Choose a mesh with shape keys, then map **Left Blink** and **Right Blink**
+  to keys driven by `v2/EyeClosedLeft` and `v2/EyeClosedRight`. Brows are
+  optional: map keys for `v2/BrowUp`, `v2/BrowDownLeft`, and
+  `v2/BrowDownRight`.
+- For rigs with eyelid bones instead of blink shape keys, map the optional
+  **Left/Right Eyelid Bone** fields instead. A mapped eyelid bone takes
+  precedence over that side's shape key; **Max Eyelid Angle** and the invert
+  toggle tune its local rotation. Bone mappings are captured at Connect time.
+
+VRCFT's default parameter addresses are `/avatar/parameters/v2/<name>`,
+for example `/avatar/parameters/v2/EyeLeftX`. The parameter names and
+normalized ranges are listed in the
+[VRCFaceTracking parameter reference](https://docs.vrcft.io/docs/tutorial-avatars/tutorial-avatars-extras/parameters/parameters).
+Avatar parameter prefixes are also supported. The panel shows recently
+received values; stale values are reset to neutral after one second.
+
+The VRCFT default OSC output port is `9000`, while `9001` is its OSC input
+port. PuppetVMC listens on `9002` by default so it does not conflict with
+VRCFT's input socket. Configure an OSC relay to forward VRCFT output to
+PuppetVMC's port `9002`; a relay is needed if VRChat must continue receiving
+the same tracking parameters. Ensure no other application is bound to the
+add-on's receive port.
+
 ### Unity animation emulator (WIP\Broken)
 
 `tools/vmc_emulator.py` can load a Unity `.anim` clip and send its sampled
