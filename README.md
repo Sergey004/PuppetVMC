@@ -57,7 +57,7 @@ real test — expect `AttributeError` or bpy API mismatches.
 ### VRCFaceTracking
 
 Enable **Receive VRCFaceTracking** before clicking **Connect**. PuppetVMC
-PuppetVMC listens on a separate UDP port (default `9001`) for OSC parameters
+listens on a separate UDP port (default `9002`) for OSC parameters
 and maps eye gaze, eyelids, and optionally brows:
 
 - Map **Left Eye** and **Right Eye** to the corresponding pose bones.
@@ -163,6 +163,18 @@ through the same `apply_bone()` path as the body, so the same calibration
 applies. The OpenVR thumb has no real Intermediate bone, so its mapping to
 Unity's Proximal/Intermediate/Distal slots is approximate.
 
+### Root movement from SteamVR HMD position
+
+Enable **Use SteamVR HMD position for root** before connecting. PuppetVMC polls
+the OpenVR standing-space HMD pose on a dedicated worker thread and uses the
+position delta from the first valid sample as locomotion for the mapped rig
+root (the top-level ancestor of the VMC **Hips** bind). Blender bone updates
+still happen only on Blender's timer thread. Vertical HMD movement is ignored
+by default to avoid moving the whole avatar when the user crouches; enable
+**Include HMD vertical movement** if desired. Use **Calibrate** to recapture
+the HMD position origin. This drives the local Blender rig; it does not send
+OSC/VMC packets to another application.
+
 ## How it works
 
 - `osc.py` parses single (non-bundle) OSC messages and runs a UDP receiver
@@ -180,6 +192,12 @@ Unity's Proximal/Intermediate/Distal slots is approximate.
   empirical and untested — if fingers mirror or fly off, the signs in
   `_convert_ovr_position` / `_convert_ovr_rotation` are the first thing to
   check.
+- SteamVR HMD position is polled on a background thread and only its latest
+  sample is applied on the Blender timer. Multiple queued VMC pose packets for
+  the same bone and VRCFT parameter are coalesced in the OSC thread to a
+  single latest value before Blender sees them; recording still preserves
+  every received packet. The UI timer processes at most 2048 queued control
+  or recording events per tick to keep large bursts from monopolizing a frame.
 - Shared state lives in `state.py` and is mutated via attributes / dict
   contents (not module reassignment).
 

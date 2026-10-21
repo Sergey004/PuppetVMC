@@ -62,6 +62,7 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
                 state.face_receiver = OSCReceiver(
                     context.scene.puppetvmc_address,
                     context.scene.puppetvmc_face_tracking_port,
+                    face_tracking=True,
                 )
             except OSError as e:
                 self.report(
@@ -72,9 +73,13 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
                 )
         state.calibration["origin"] = None
         state.calibration["countdown_end"] = None
-        if context.scene.puppetvmc_use_openvr_fingers:
+        state.ovr["hmd_origin"] = None
+        if (context.scene.puppetvmc_use_openvr_fingers
+                or context.scene.puppetvmc_use_openvr_hmd_position):
             try:
-                openvr_start()
+                openvr_start(
+                    track_hmd_position=context.scene.puppetvmc_use_openvr_hmd_position,
+                )
             except Exception as e:
                 self.report({'WARNING'}, f"OpenVR init failed: {e}")
         context.scene.puppetvmc_running = True
@@ -99,7 +104,10 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
                 )
             state.face_receiver.stop()
             state.face_receiver = None
-        openvr_stop()
+        try:
+            openvr_stop()
+        except RuntimeError as e:
+            self.report({'WARNING'}, str(e))
         if PUPPETVMC_OT_connect._timer is not None:
             context.window_manager.event_timer_remove(PUPPETVMC_OT_connect._timer)
             PUPPETVMC_OT_connect._timer = None
@@ -124,6 +132,7 @@ class PUPPETVMC_OT_recalibrate(bpy.types.Operator):
         state.calibration["origin"] = None
         state.calibration["rotations"] = {}
         state.calibration["countdown_end"] = None
+        state.ovr["hmd_origin"] = None
         return {'FINISHED'}
 
 
@@ -143,6 +152,7 @@ class PUPPETVMC_OT_force_t_pose(bpy.types.Operator):
 
         state.calibration["origin"] = None
         state.calibration["rotations"] = {}
+        state.ovr["hmd_origin"] = None
         self.report({'INFO'}, "Armature reset to rest/T-pose")
         return {'FINISHED'}
 
@@ -165,6 +175,7 @@ class PUPPETVMC_OT_start_calibration_timer(bpy.types.Operator):
                 if time.time() >= state.calibration["countdown_end"]:
                     state.calibration["origin"] = None
                     state.calibration["rotations"] = {}
+                    state.ovr["hmd_origin"] = None
                     state.calibration["countdown_end"] = None
                     try:
                         from .openvr_bridge import haptic_pulse
@@ -249,6 +260,8 @@ class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
         if not context.scene.puppetvmc_recording:
             # start recording
             context.scene.puppetvmc_recording = True
+            if state.receiver is not None:
+                state.receiver.recording = True
             from . import state
             from .recorder import start_recording
             start_recording(context)
@@ -256,6 +269,8 @@ class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
             self.report({'INFO'}, "Recording started")
         else:
             # stop recording and bake
+            if state.receiver is not None:
+                state.receiver.recording = False
             from .recorder import bake_recording
             bake_recording(context)
             context.scene.puppetvmc_recording = False

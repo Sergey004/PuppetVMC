@@ -100,6 +100,25 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
         box4.label(text="Fingers (SteamVR / OpenVR)")
         if OPENVR_AVAILABLE:
             box4.prop(scene, "puppetvmc_use_openvr_fingers")
+            box4.prop(scene, "puppetvmc_use_openvr_hmd_position")
+            if scene.puppetvmc_use_openvr_hmd_position:
+                box4.prop(scene, "puppetvmc_openvr_hmd_vertical")
+                if state.ovr.get("hmd_error"):
+                    box4.label(
+                        text=f"HMD tracking error: {state.ovr['hmd_error']}",
+                        icon='ERROR',
+                    )
+                elif state.ovr.get("system") is None:
+                    box4.label(text="Connect to start HMD position polling")
+                elif state.ovr.get("hmd_position") is None:
+                    box4.label(text="Waiting for a valid SteamVR HMD pose")
+                else:
+                    box4.label(text="HMD position: tracking")
+                if not any(
+                    item.vmc_name == "Hips" and item.bone_name
+                    for item in scene.puppetvmc_bone_map
+                ):
+                    box4.label(text="Map VMC Hips to the rig root first", icon='ERROR')
         else:
             box4.label(text="openvr module not installed", icon='ERROR')
             box4.operator("puppetvmc.install_openvr")

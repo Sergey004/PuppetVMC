@@ -86,6 +86,12 @@ def register():
 
     bpy.types.Scene.puppetvmc_use_openvr_fingers = bpy.props.BoolProperty(
         name="Read fingers from SteamVR", default=False)
+    bpy.types.Scene.puppetvmc_use_openvr_hmd_position = bpy.props.BoolProperty(
+        name="Use SteamVR HMD position for root", default=False,
+        description="Move the mapped armature root by the HMD's calibrated horizontal position")
+    bpy.types.Scene.puppetvmc_openvr_hmd_vertical = bpy.props.BoolProperty(
+        name="Include HMD vertical movement", default=False,
+        description="Also move the armature root when the HMD changes height")
 
     bpy.types.Scene.puppetvmc_face_tracking_enabled = bpy.props.BoolProperty(
         name="Receive VRCFaceTracking", default=True)
@@ -161,6 +167,8 @@ def unregister():
     del bpy.types.Scene.puppetvmc_xr_manual_rot
     del bpy.types.Scene.puppetvmc_xr_follow_head
     del bpy.types.Scene.puppetvmc_use_openvr_fingers
+    del bpy.types.Scene.puppetvmc_use_openvr_hmd_position
+    del bpy.types.Scene.puppetvmc_openvr_hmd_vertical
     del bpy.types.Scene.puppetvmc_face_tracking_enabled
     del bpy.types.Scene.puppetvmc_face_tracking_port
     del bpy.types.Scene.puppetvmc_face_left_eye_bone

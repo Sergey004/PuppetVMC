@@ -23,7 +23,22 @@ calibration = {
     # instead of needing a free hand to press something while already posed.
 }
 
-ovr = {"input": None, "action_sets": None, "left": None, "right": None}
+from threading import Event, Lock
+
+ovr = {
+    "input": None,
+    "system": None,
+    "action_sets": None,
+    "left": None,
+    "right": None,
+    "hmd_stop": Event(),
+    "hmd_lock": Lock(),
+    "hmd_thread": None,
+    "hmd_position": None,
+    "hmd_error": None,
+    "hmd_origin": None,
+    "hmd_root_base": None,
+}
 
 # Recorder state for VMC4B-style timestamped recording
 from collections import deque

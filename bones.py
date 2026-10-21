@@ -47,11 +47,16 @@ def _compute_parent_quaternion(bone):
 
 
 class _BoneEntry:
-    __slots__ = ("pose_bone", "parent_quaternion")
+    __slots__ = (
+        "pose_bone",
+        "parent_quaternion",
+        "parent_quaternion_inverse",
+    )
 
     def __init__(self, pose_bone):
         self.pose_bone = pose_bone
         self.parent_quaternion = _compute_parent_quaternion(pose_bone.bone)
+        self.parent_quaternion_inverse = self.parent_quaternion.inverted()
 
 
 def get_bone_map(context):
@@ -114,6 +119,9 @@ def build_bone_cache(armature):
         "bones": bones,
         "root_pose_bone": root_pbone,
         "root_quaternion": root_quaternion,
+        "root_quaternion_inverse": (
+            root_quaternion.inverted() if root_quaternion is not None else None
+        ),
         "hips_head_local": hips_head_local,
     }
 
@@ -126,20 +134,22 @@ def apply_bone(bone_cache, vmc_name, px, py, pz, qx, qy, qz, qw):
     if bone_cache is None:
         return
     entry = bone_cache["bones"].get(vmc_name)
-    rquat = convert_rotation(qx, qy, qz, qw)
-
     if entry is None:
         return
+    rquat = convert_rotation(qx, qy, qz, qw)
     pbone = entry.pose_bone
-    result_q = entry.parent_quaternion.inverted() @ rquat @ entry.parent_quaternion
+    result_q = (
+        entry.parent_quaternion_inverse @ rquat @ entry.parent_quaternion
+    )
     pbone.rotation_mode = 'QUATERNION'
     pbone.rotation_quaternion = result_q
 
     if vmc_name == ROOT_HUMANOID_BONE:
         root_pbone = bone_cache["root_pose_bone"]
-        root_q = bone_cache["root_quaternion"]
+        root_q_inverse = bone_cache["root_quaternion_inverse"]
         hips_hl = bone_cache["hips_head_local"]
-        if root_pbone is not None and root_q is not None and hips_hl is not None:
+        if (root_pbone is not None and root_q_inverse is not None
+                and hips_hl is not None):
             world_pos = convert_position(px, py, pz)
             # Anchor: subtract the calibration origin (captured on the first
             # frame after Calibrate/the countdown fires) so root motion is
@@ -149,7 +159,7 @@ def apply_bone(bone_cache, vmc_name, px, py, pz, qx, qy, qz, qw):
             if state.calibration["origin"] is None:
                 state.calibration["origin"] = world_pos.copy()
             anchored_pos = world_pos - state.calibration["origin"]
-            local = root_q.inverted() @ (anchored_pos - hips_hl)
+            local = root_q_inverse @ (anchored_pos - hips_hl)
             root_pbone.location = local
 
 
