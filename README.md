@@ -60,6 +60,15 @@ Enable **Receive VRCFaceTracking** before clicking **Connect**. PuppetVMC
 listens on a separate UDP port (default `9002`) for OSC parameters
 and maps eye gaze, eyelids, and optionally brows:
 
+For facial capture without body/FBT input, enable **Face Only (no body
+tracking)** at the top of the panel. Choose an armature and/or a face mesh,
+connect, then click **Record Facial Expressions**. This mode only opens the
+VRCFaceTracking listener; it does not start the VMC body receiver or SteamVR
+tracking. Recording keys the mapped facial bones and shape keys on the
+current timeline, advances one frame per add-on timer tick, and creates
+separate Face Only actions instead of collecting raw VMC packets. Stop
+recording with **Stop Face Recording**; disconnect when finished.
+
 - Map **Left Eye** and **Right Eye** to the corresponding pose bones.
   `v2/EyeLeftX`, `v2/EyeLeftY`, `v2/EyeRightX`, and `v2/EyeRightY` drive
   horizontal/vertical local rotations. **Max Gaze Angle** sets the angle at
@@ -67,9 +76,13 @@ and maps eye gaze, eyelids, and optionally brows:
   turns the eyes the wrong way. Gaze is applied relative to the eye bones'
   pose when Connect starts, so disconnect/reconnect after changing the bones.
 - Choose a mesh with shape keys, then map **Left Blink** and **Right Blink**
-  to keys driven by `v2/EyeClosedLeft` and `v2/EyeClosedRight`. Brows are
-  optional: map keys for `v2/BrowUp`, `v2/BrowDownLeft`, and
-  `v2/BrowDownRight`.
+  to keys driven by `v2/EyeClosedLeft` and `v2/EyeClosedRight`.
+- Brows are optional. In **Brows**, bind **Brow Up Bone**, **Left Brow Down
+  Bone**, and **Right Brow Down Bone** to rig bones to drive their local
+  rotation from `v2/BrowUp`, `v2/BrowDownLeft`, and `v2/BrowDownRight`.
+  Set the rotation axis, maximum angle, and inversion to fit the rig. If a
+  brow bone is assigned, it takes priority over that parameter's shape key;
+  leave the bone blank to use a mapped brow shape key instead.
 - For rigs with eyelid bones instead of blink shape keys, map the optional
   **Left/Right Eyelid Bone** fields instead. A mapped eyelid bone takes
   precedence over that side's shape key; **Max Eyelid Angle** and the invert

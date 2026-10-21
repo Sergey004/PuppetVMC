@@ -24,11 +24,16 @@ def _shape_key_value(mesh, key_name):
 
 def capture_eye_baselines(armature, scene):
     baselines = {}
+    if armature is None:
+        return baselines
     for name in (
         scene.puppetvmc_face_left_eye_bone,
         scene.puppetvmc_face_right_eye_bone,
         scene.puppetvmc_face_eyelid_left_bone,
         scene.puppetvmc_face_eyelid_right_bone,
+        scene.puppetvmc_face_brow_up_bone,
+        scene.puppetvmc_face_brow_down_left_bone,
+        scene.puppetvmc_face_brow_down_right_bone,
     ):
         if name and name not in baselines:
             pose_bone = armature.pose.bones.get(name)
@@ -38,7 +43,7 @@ def capture_eye_baselines(armature, scene):
 
 
 def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
-    if not bone_name:
+    if armature is None or not bone_name:
         return
     pose_bone = armature.pose.bones.get(bone_name)
     baseline = baselines.get(bone_name)
@@ -58,7 +63,7 @@ def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
 
 
 def _apply_eyelid(armature, bone_name, value, scene, baselines):
-    if not bone_name or value is None:
+    if armature is None or not bone_name or value is None:
         return
     pose_bone = armature.pose.bones.get(bone_name)
     baseline = baselines.get(bone_name)
@@ -70,6 +75,26 @@ def _apply_eyelid(armature, bone_name, value, scene, baselines):
         angle = -angle
     pose_bone.rotation_mode = 'QUATERNION'
     pose_bone.rotation_quaternion = baseline @ Euler((angle, 0.0, 0.0), 'XYZ').to_quaternion()
+
+
+def _apply_brow(armature, bone_name, value, scene, baselines):
+    if armature is None or not bone_name:
+        return
+    pose_bone = armature.pose.bones.get(bone_name)
+    baseline = baselines.get(bone_name)
+    if pose_bone is None or baseline is None:
+        return
+
+    value = max(0.0, min(1.0, value or 0.0))
+    angle = scene.puppetvmc_face_brow_max_angle * value
+    if scene.puppetvmc_face_brow_invert:
+        angle = -angle
+    rotation = [0.0, 0.0, 0.0]
+    rotation["XYZ".index(scene.puppetvmc_face_brow_rotation_axis)] = angle
+    pose_bone.rotation_mode = 'QUATERNION'
+    pose_bone.rotation_quaternion = (
+        baseline @ Euler(rotation, 'XYZ').to_quaternion()
+    )
 
 
 def _apply_shape_key(mesh, key_name, value):
@@ -94,7 +119,10 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
                 scene, f"puppetvmc_face_{side.lower()}_eye_bone"
             )
             baseline = baselines.get(bone_name)
-            pose_bone = armature.pose.bones.get(bone_name) if bone_name else None
+            pose_bone = (
+                armature.pose.bones.get(bone_name)
+                if armature is not None and bone_name else None
+            )
             if pose_bone is not None and baseline is not None:
                 pose_bone.rotation_mode = 'QUATERNION'
                 pose_bone.rotation_quaternion = baseline.copy()
@@ -115,7 +143,10 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
         bone_name = getattr(scene, f"puppetvmc_face_eyelid_{suffix}_bone")
         if stale:
             baseline = baselines.get(bone_name)
-            pose_bone = armature.pose.bones.get(bone_name) if bone_name else None
+            pose_bone = (
+                armature.pose.bones.get(bone_name)
+                if armature is not None and bone_name else None
+            )
             if pose_bone is not None and baseline is not None:
                 pose_bone.rotation_mode = 'QUATERNION'
                 pose_bone.rotation_quaternion = baseline.copy()
@@ -129,18 +160,27 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
                 mesh, getattr(scene, f"puppetvmc_face_blink_{suffix}_key"), value
             )
 
-    _apply_shape_key(
-        mesh,
-        scene.puppetvmc_face_brow_up_key,
-        0.0 if stale else _get_value(values, "v2/BrowUp"),
-    )
-    _apply_shape_key(
-        mesh,
-        scene.puppetvmc_face_brow_down_left_key,
-        0.0 if stale else _get_value(values, "v2/BrowDownLeft"),
-    )
-    _apply_shape_key(
-        mesh,
-        scene.puppetvmc_face_brow_down_right_key,
-        0.0 if stale else _get_value(values, "v2/BrowDownRight"),
-    )
+    for parameter, suffix in (
+        ("BrowUp", "up"),
+        ("BrowDownLeft", "down_left"),
+        ("BrowDownRight", "down_right"),
+    ):
+        value = None if stale else _get_value(values, f"v2/{parameter}")
+        bone_name = getattr(scene, f"puppetvmc_face_brow_{suffix}_bone")
+        if bone_name:
+            if stale:
+                baseline = baselines.get(bone_name)
+                pose_bone = (
+                    armature.pose.bones.get(bone_name)
+                    if armature is not None else None
+                )
+                if pose_bone is not None and baseline is not None:
+                    pose_bone.rotation_mode = 'QUATERNION'
+                    pose_bone.rotation_quaternion = baseline.copy()
+            else:
+                _apply_brow(armature, bone_name, value, scene, baselines)
+        else:
+            _apply_shape_key(
+                mesh, getattr(scene, f"puppetvmc_face_brow_{suffix}_key"),
+                0.0 if stale else value,
+            )

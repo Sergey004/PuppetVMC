@@ -95,6 +95,10 @@ def register():
 
     bpy.types.Scene.puppetvmc_face_tracking_enabled = bpy.props.BoolProperty(
         name="Receive VRCFaceTracking", default=True)
+    bpy.types.Scene.puppetvmc_face_only = bpy.props.BoolProperty(
+        name="Face Only (no body tracking)",
+        default=False,
+        description="Connect only to VRCFaceTracking and record facial controls")
     bpy.types.Scene.puppetvmc_face_tracking_port = bpy.props.IntProperty(
         name="VRCFT OSC Port", default=9002, min=1, max=65535,
         description="UDP port VRCFaceTracking sends avatar parameter OSC messages to")
@@ -132,6 +136,28 @@ def register():
         name="Left Brow Down", description="Shape key driven by v2/BrowDownLeft")
     bpy.types.Scene.puppetvmc_face_brow_down_right_key = bpy.props.StringProperty(
         name="Right Brow Down", description="Shape key driven by v2/BrowDownRight")
+    bpy.types.Scene.puppetvmc_face_brow_up_bone = bpy.props.StringProperty(
+        name="Brow Up Bone", description="Optional bone rotated by v2/BrowUp")
+    bpy.types.Scene.puppetvmc_face_brow_down_left_bone = bpy.props.StringProperty(
+        name="Left Brow Down Bone",
+        description="Optional bone rotated by v2/BrowDownLeft")
+    bpy.types.Scene.puppetvmc_face_brow_down_right_bone = bpy.props.StringProperty(
+        name="Right Brow Down Bone",
+        description="Optional bone rotated by v2/BrowDownRight")
+    bpy.types.Scene.puppetvmc_face_brow_max_angle = bpy.props.FloatProperty(
+        name="Max Brow Angle", default=math.radians(12.0), min=0.0,
+        max=math.radians(90.0), subtype='ANGLE',
+        description="Maximum brow-bone rotation at full VRCFT parameter value")
+    bpy.types.Scene.puppetvmc_face_brow_rotation_axis = bpy.props.EnumProperty(
+        name="Brow Rotation Axis",
+        items=(
+            ('X', "X", "Rotate around the local X axis"),
+            ('Y', "Y", "Rotate around the local Y axis"),
+            ('Z', "Z", "Rotate around the local Z axis"),
+        ),
+        default='X')
+    bpy.types.Scene.puppetvmc_face_brow_invert = bpy.props.BoolProperty(
+        name="Invert Brow Rotation", default=False)
 
     bpy.types.Scene.puppetvmc_calib_delay = bpy.props.IntProperty(
         name="Calibrate delay (s)", default=5, min=1, max=30,
@@ -170,6 +196,7 @@ def unregister():
     del bpy.types.Scene.puppetvmc_use_openvr_hmd_position
     del bpy.types.Scene.puppetvmc_openvr_hmd_vertical
     del bpy.types.Scene.puppetvmc_face_tracking_enabled
+    del bpy.types.Scene.puppetvmc_face_only
     del bpy.types.Scene.puppetvmc_face_tracking_port
     del bpy.types.Scene.puppetvmc_face_left_eye_bone
     del bpy.types.Scene.puppetvmc_face_right_eye_bone
@@ -186,6 +213,12 @@ def unregister():
     del bpy.types.Scene.puppetvmc_face_brow_up_key
     del bpy.types.Scene.puppetvmc_face_brow_down_left_key
     del bpy.types.Scene.puppetvmc_face_brow_down_right_key
+    del bpy.types.Scene.puppetvmc_face_brow_up_bone
+    del bpy.types.Scene.puppetvmc_face_brow_down_left_bone
+    del bpy.types.Scene.puppetvmc_face_brow_down_right_bone
+    del bpy.types.Scene.puppetvmc_face_brow_max_angle
+    del bpy.types.Scene.puppetvmc_face_brow_rotation_axis
+    del bpy.types.Scene.puppetvmc_face_brow_invert
     del bpy.types.Scene.puppetvmc_calib_delay
     del bpy.types.Scene.puppetvmc_recording
     del bpy.types.Scene.puppetvmc_animation_file

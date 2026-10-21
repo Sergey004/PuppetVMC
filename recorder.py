@@ -1,5 +1,6 @@
 """VMC4B-style timestamped recorder for PuppetVMC."""
 from math import floor
+import time
 import bpy
 from collections import deque
 from . import state
@@ -10,6 +11,87 @@ from .constants import ROOT_HUMANOID_BONE
 def start_recording(context):
     state.recorder_queue.clear()
     # start time and frame not needed, first packet defines zero
+
+
+def start_face_recording(context):
+    scene = context.scene
+    armature = scene.puppetvmc_armature
+    mesh = scene.puppetvmc_face_mesh
+    state.face_recording_targets = tuple(
+        target for target in (
+            armature,
+            mesh.data.shape_keys if mesh and mesh.data.shape_keys else None,
+        )
+        if target is not None
+    )
+    for target in state.face_recording_targets:
+        if target.animation_data is not None:
+            target.animation_data.action = None
+    state.recording_start_frame = scene.frame_current
+    state.face_recording_start_time = time.perf_counter()
+    state.face_recording_last_frame = None
+
+
+def record_face_frame(context):
+    scene = context.scene
+    start_time = state.face_recording_start_time
+    start_frame = state.recording_start_frame
+    if start_time is None or start_frame is None:
+        return
+    frame = start_frame + int(floor(
+        (time.perf_counter() - start_time)
+        * scene.render.fps / scene.render.fps_base + 1e-6
+    ))
+    if frame == state.face_recording_last_frame:
+        return
+    state.face_recording_last_frame = frame
+    armature = scene.puppetvmc_armature
+    if armature is not None:
+        bone_names = {
+            scene.puppetvmc_face_left_eye_bone,
+            scene.puppetvmc_face_right_eye_bone,
+            scene.puppetvmc_face_eyelid_left_bone,
+            scene.puppetvmc_face_eyelid_right_bone,
+            scene.puppetvmc_face_brow_up_bone,
+            scene.puppetvmc_face_brow_down_left_bone,
+            scene.puppetvmc_face_brow_down_right_bone,
+        }
+        for bone_name in bone_names:
+            pose_bone = armature.pose.bones.get(bone_name) if bone_name else None
+            if pose_bone is None:
+                continue
+            pose_bone.rotation_mode = 'QUATERNION'
+            pose_bone.keyframe_insert(
+                data_path="rotation_quaternion", frame=frame,
+            )
+    mesh = scene.puppetvmc_face_mesh
+    shape_keys = mesh.data.shape_keys if mesh else None
+    if shape_keys is not None:
+        key_names = {
+            scene.puppetvmc_face_blink_left_key,
+            scene.puppetvmc_face_blink_right_key,
+            scene.puppetvmc_face_brow_up_key,
+            scene.puppetvmc_face_brow_down_left_key,
+            scene.puppetvmc_face_brow_down_right_key,
+        }
+        for key_name in key_names:
+            key_block = shape_keys.key_blocks.get(key_name) if key_name else None
+            if key_block is not None:
+                shape_keys.keyframe_insert(
+                    data_path=key_block.path_from_id("value"),
+                    frame=frame,
+                )
+
+    for target in state.face_recording_targets:
+        animation_data = target.animation_data
+        if animation_data is not None and animation_data.action is not None:
+            action = animation_data.action
+            if not action.name.startswith("Face Only "):
+                action.name = f"Face Only {target.name} {frame}"
+    if scene.frame_end < frame + 1:
+        scene.frame_end = frame + 1
+    scene.frame_set(frame + 1)
+
 
 def _get_fcurve(action, armature, data_path, index, group_name):
     try:

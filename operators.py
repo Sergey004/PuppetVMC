@@ -35,54 +35,73 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def execute(self, context):
-        armature = context.scene.puppetvmc_armature
-        if armature is None:
-            self.report({'ERROR'}, "Pick an armature first")
+        scene = context.scene
+        armature = scene.puppetvmc_armature
+        face_only = scene.puppetvmc_face_only
+        face_mesh = scene.puppetvmc_face_mesh
+        if armature is None and not (
+            face_only and face_mesh and face_mesh.data.shape_keys
+        ):
+            self.report({'ERROR'}, "Pick an armature or a face mesh with shape keys")
             return {'CANCELLED'}
-        state.bone_cache = build_bone_cache(armature)
-        if state.bone_cache is None:
+        state.bone_cache = None if face_only else build_bone_cache(armature)
+        if not face_only and state.bone_cache is None:
             self.report({'WARNING'}, "Bind map is empty — nothing will move until you map VMC slots to bones")
-        try:
-            state.receiver = OSCReceiver(
-                context.scene.puppetvmc_address,
-                context.scene.puppetvmc_port,
-            )
-        except OSError as e:
-            state.bone_cache = None
-            self.report({'ERROR'}, f"Could not bind {context.scene.puppetvmc_address}:{context.scene.puppetvmc_port} — {e}")
-            return {'CANCELLED'}
+        state.receiver = None
+        if not face_only:
+            try:
+                state.receiver = OSCReceiver(
+                    scene.puppetvmc_address,
+                    scene.puppetvmc_port,
+                )
+            except OSError as e:
+                state.bone_cache = None
+                self.report({'ERROR'}, f"Could not bind {scene.puppetvmc_address}:{scene.puppetvmc_port} — {e}")
+                return {'CANCELLED'}
         state.face_tracking_values.clear()
         state.face_tracking_last_received = None
         state.face_eye_baselines = capture_eye_baselines(
             armature, context.scene,
         )
         state.face_receiver = None
-        if context.scene.puppetvmc_face_tracking_enabled:
+        if scene.puppetvmc_face_tracking_enabled or face_only:
             try:
                 state.face_receiver = OSCReceiver(
-                    context.scene.puppetvmc_address,
-                    context.scene.puppetvmc_face_tracking_port,
+                    scene.puppetvmc_address,
+                    scene.puppetvmc_face_tracking_port,
                     face_tracking=True,
                 )
             except OSError as e:
+                if face_only:
+                    if state.receiver is not None:
+                        state.receiver.stop()
+                        state.receiver = None
+                    state.bone_cache = None
+                    self.report(
+                        {'ERROR'},
+                        f"Could not bind VRCFaceTracking port "
+                        f"{scene.puppetvmc_face_tracking_port} — {e}",
+                    )
+                    return {'CANCELLED'}
                 self.report(
                     {'WARNING'},
                     f"VMC connected, but VRCFaceTracking listener could not bind "
-                    f"{context.scene.puppetvmc_address}:"
-                    f"{context.scene.puppetvmc_face_tracking_port} — {e}",
+                    f"{scene.puppetvmc_address}:"
+                    f"{scene.puppetvmc_face_tracking_port} — {e}",
                 )
         state.calibration["origin"] = None
         state.calibration["countdown_end"] = None
         state.ovr["hmd_origin"] = None
-        if (context.scene.puppetvmc_use_openvr_fingers
-                or context.scene.puppetvmc_use_openvr_hmd_position):
+        if (not face_only and (
+                scene.puppetvmc_use_openvr_fingers
+                or scene.puppetvmc_use_openvr_hmd_position)):
             try:
                 openvr_start(
-                    track_hmd_position=context.scene.puppetvmc_use_openvr_hmd_position,
+                    track_hmd_position=scene.puppetvmc_use_openvr_hmd_position,
                 )
             except Exception as e:
                 self.report({'WARNING'}, f"OpenVR init failed: {e}")
-        context.scene.puppetvmc_running = True
+        scene.puppetvmc_running = True
         wm = context.window_manager
         PUPPETVMC_OT_connect._timer = wm.event_timer_add(1.0 / FRAME_RATE, window=context.window)
         wm.modal_handler_add(self)
@@ -94,16 +113,20 @@ class PUPPETVMC_OT_connect(bpy.types.Operator):
             state.receiver = None
         if state.face_receiver:
             armature = context.scene.puppetvmc_armature
-            if armature:
-                apply_face_tracking(
-                    armature,
-                    context.scene,
-                    {},
-                    state.face_eye_baselines,
-                    time.time() - FACE_TRACKING_TIMEOUT - 1.0,
-                )
+            apply_face_tracking(
+                armature,
+                context.scene,
+                {},
+                state.face_eye_baselines,
+                time.time() - FACE_TRACKING_TIMEOUT - 1.0,
+            )
             state.face_receiver.stop()
             state.face_receiver = None
+        if context.scene.puppetvmc_face_only:
+            context.scene.puppetvmc_recording = False
+            state.face_recording_targets = ()
+            state.face_recording_start_time = None
+            state.face_recording_last_frame = None
         try:
             openvr_stop()
         except RuntimeError as e:
@@ -254,27 +277,79 @@ class PUPPETVMC_OT_install_openvr(bpy.types.Operator):
 class PUPPETVMC_OT_toggle_record(bpy.types.Operator):
     bl_idname = "puppetvmc.toggle_record"
     bl_label = "Record"
-    bl_description = "Toggle VMC4B-style timestamped recording — stores packets and bakes an Action on stop"
+    bl_description = "Record VMC packets or key facial controls in Face Only mode"
 
     def execute(self, context):
         if not context.scene.puppetvmc_recording:
+            if context.scene.puppetvmc_face_only:
+                scene = context.scene
+                if state.face_receiver is None:
+                    self.report({'ERROR'}, "Connect in Face Only mode before recording")
+                    return {'CANCELLED'}
+                bone_targets = (
+                    scene.puppetvmc_face_left_eye_bone,
+                    scene.puppetvmc_face_right_eye_bone,
+                    scene.puppetvmc_face_eyelid_left_bone,
+                    scene.puppetvmc_face_eyelid_right_bone,
+                    scene.puppetvmc_face_brow_up_bone,
+                    scene.puppetvmc_face_brow_down_left_bone,
+                    scene.puppetvmc_face_brow_down_right_bone,
+                )
+                shape_targets = (
+                    scene.puppetvmc_face_blink_left_key,
+                    scene.puppetvmc_face_blink_right_key,
+                    scene.puppetvmc_face_brow_up_key,
+                    scene.puppetvmc_face_brow_down_left_key,
+                    scene.puppetvmc_face_brow_down_right_key,
+                )
+                has_bone_target = scene.puppetvmc_armature and any(
+                    scene.puppetvmc_armature.pose.bones.get(name)
+                    for name in bone_targets if name
+                )
+                mesh = scene.puppetvmc_face_mesh
+                has_shape_target = (
+                    mesh is not None
+                    and mesh.data.shape_keys is not None
+                    and any(
+                        mesh.data.shape_keys.key_blocks.get(name)
+                        for name in shape_targets if name
+                    )
+                )
+                if not has_bone_target and not has_shape_target:
+                    self.report(
+                        {'ERROR'},
+                        "Map at least one facial bone or shape key before recording",
+                    )
+                    return {'CANCELLED'}
             # start recording
             context.scene.puppetvmc_recording = True
             if state.receiver is not None:
                 state.receiver.recording = True
-            from . import state
-            from .recorder import start_recording
-            start_recording(context)
+            from .recorder import start_face_recording, start_recording
+            if context.scene.puppetvmc_face_only:
+                start_face_recording(context)
+            else:
+                start_recording(context)
             state.recording_start_time = __import__('time').time()
             self.report({'INFO'}, "Recording started")
         else:
             # stop recording and bake
             if state.receiver is not None:
                 state.receiver.recording = False
-            from .recorder import bake_recording
-            bake_recording(context)
+            if context.scene.puppetvmc_face_only:
+                state.face_recording_targets = ()
+                state.recording_start_frame = None
+                state.face_recording_start_time = None
+                state.face_recording_last_frame = None
+            else:
+                from .recorder import bake_recording
+                bake_recording(context)
             context.scene.puppetvmc_recording = False
-            self.report({'INFO'}, "Recording stopped and baked")
+            self.report(
+                {'INFO'},
+                "Face recording stopped" if context.scene.puppetvmc_face_only
+                else "Recording stopped and baked",
+            )
         return {'FINISHED'}
 
 

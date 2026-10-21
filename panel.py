@@ -7,6 +7,115 @@ from .openvr_bridge import OPENVR_AVAILABLE
 from .bones import get_bone_map_conflicts
 
 
+def _draw_face_tracking(layout, scene, armature):
+    face_box = layout.box()
+    face_box.label(text="Face tracking (VRCFaceTracking)")
+    if not scene.puppetvmc_face_only:
+        face_box.prop(scene, "puppetvmc_face_tracking_enabled")
+    face_box.prop(scene, "puppetvmc_face_tracking_port")
+    if state.face_receiver is None:
+        face_box.label(text="Connect to start the VRCFT listener")
+    elif not state.face_tracking_values:
+        face_box.label(text="Waiting for /avatar/parameters/... OSC")
+    else:
+        values = sorted(state.face_tracking_values.items())
+        face_box.label(text=f"Received parameters: {len(values)}")
+        age = max(0.0, time.time() - state.face_tracking_last_received)
+        face_box.label(
+            text="Live" if age < 1.0 else f"Last update: {age:.1f}s ago"
+        )
+        for name, value in values[:12]:
+            face_box.label(text=f"{name}: {value:.3f}")
+        if len(values) > 12:
+            face_box.label(text=f"... and {len(values) - 12} more")
+
+    eye_box = face_box.box()
+    eye_box.label(text="Eye gaze (v2/EyeLeftX/Y and EyeRightX/Y)")
+    if armature:
+        eye_box.prop_search(
+            scene, "puppetvmc_face_left_eye_bone",
+            armature.pose, "bones", text="Left Eye",
+        )
+        eye_box.prop_search(
+            scene, "puppetvmc_face_right_eye_bone",
+            armature.pose, "bones", text="Right Eye",
+        )
+    else:
+        eye_box.label(text="Select an armature to map eye bones")
+    eye_box.prop(scene, "puppetvmc_face_eye_max_angle")
+    row = eye_box.row(align=True)
+    row.prop(scene, "puppetvmc_face_eye_invert_horizontal")
+    row.prop(scene, "puppetvmc_face_eye_invert_vertical")
+
+    shape_box = face_box.box()
+    shape_box.label(text="Eyelids")
+    if armature:
+        shape_box.prop_search(
+            scene, "puppetvmc_face_eyelid_left_bone",
+            armature.pose, "bones", text="Left Eyelid Bone (optional)",
+        )
+        shape_box.prop_search(
+            scene, "puppetvmc_face_eyelid_right_bone",
+            armature.pose, "bones", text="Right Eyelid Bone (optional)",
+        )
+        shape_box.prop(scene, "puppetvmc_face_eyelid_max_angle")
+        shape_box.prop(scene, "puppetvmc_face_eyelid_invert")
+    shape_box.prop(scene, "puppetvmc_face_mesh")
+    mesh = scene.puppetvmc_face_mesh
+    if mesh and mesh.data.shape_keys:
+        keys = mesh.data.shape_keys
+        shape_box.label(text="Map blink to either a bone or shape key")
+        shape_box.prop_search(
+            scene, "puppetvmc_face_blink_left_key", keys, "key_blocks",
+            text="Left Blink",
+        )
+        shape_box.prop_search(
+            scene, "puppetvmc_face_blink_right_key", keys, "key_blocks",
+            text="Right Blink",
+        )
+    else:
+        shape_box.label(text="Choose a mesh with shape keys")
+
+    brow_box = face_box.box()
+    brow_box.label(text="Brows (optional)")
+    if armature:
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_up_bone",
+            armature.pose, "bones", text="Brow Up Bone",
+        )
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_down_left_bone",
+            armature.pose, "bones", text="Left Brow Down Bone",
+        )
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_down_right_bone",
+            armature.pose, "bones", text="Right Brow Down Bone",
+        )
+        brow_box.prop(scene, "puppetvmc_face_brow_rotation_axis")
+        brow_box.prop(scene, "puppetvmc_face_brow_max_angle")
+        brow_box.prop(scene, "puppetvmc_face_brow_invert")
+    else:
+        brow_box.label(text="Select an armature to map brow bones")
+    if mesh and mesh.data.shape_keys:
+        keys = mesh.data.shape_keys
+        brow_box.label(text="Or map each parameter to a shape key")
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_up_key", keys, "key_blocks",
+            text="Brow Up Shape Key",
+        )
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_down_left_key", keys,
+            "key_blocks", text="Left Brow Down Shape Key",
+        )
+        brow_box.prop_search(
+            scene, "puppetvmc_face_brow_down_right_key", keys,
+            "key_blocks", text="Right Brow Down Shape Key",
+        )
+    face_box.label(
+        text="Disconnect/reconnect after changing eye-bone mappings"
+    )
+
+
 class PUPPETVMC_PT_panel(bpy.types.Panel):
     bl_label = "PuppetVMC"
     bl_idname = "PUPPETVMC_PT_panel"
@@ -20,8 +129,27 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
         armature = scene.puppetvmc_armature
 
         # --- Connection ---
+        mode_row = layout.row()
+        mode_row.enabled = not scene.puppetvmc_running
+        mode_row.prop(scene, "puppetvmc_face_only")
         layout.prop(scene, "puppetvmc_armature")
         layout.prop(scene, "puppetvmc_address")
+        if scene.puppetvmc_face_only:
+            face_row = layout.row()
+            if scene.puppetvmc_running:
+                face_row.operator("puppetvmc.disconnect")
+            else:
+                face_row.operator("puppetvmc.connect", text="Connect Face Only")
+            rec_row = layout.row()
+            rec_row.operator(
+                "puppetvmc.toggle_record",
+                depress=scene.puppetvmc_recording,
+                text="Stop Face Recording" if scene.puppetvmc_recording
+                else "Record Facial Expressions",
+            )
+            layout.label(text="Body VMC and SteamVR tracking are disabled")
+            _draw_face_tracking(layout, scene, armature)
+            return
         layout.prop(scene, "puppetvmc_port")
         row = layout.row()
         if scene.puppetvmc_running:
@@ -123,90 +251,8 @@ class PUPPETVMC_PT_panel(bpy.types.Panel):
             box4.label(text="openvr module not installed", icon='ERROR')
             box4.operator("puppetvmc.install_openvr")
 
-        # --- VRCFaceTracking OSC parameters ---
-        face_box = layout.box()
-        face_box.label(text="Face tracking (VRCFaceTracking)")
-        face_box.prop(scene, "puppetvmc_face_tracking_enabled")
         if scene.puppetvmc_face_tracking_enabled:
-            face_box.prop(scene, "puppetvmc_face_tracking_port")
-            if state.face_receiver is None:
-                face_box.label(text="Connect to start the VRCFT listener")
-            elif not state.face_tracking_values:
-                face_box.label(text="Waiting for /avatar/parameters/... OSC")
-            else:
-                values = sorted(state.face_tracking_values.items())
-                face_box.label(text=f"Received parameters: {len(values)}")
-                age = max(0.0, time.time() - state.face_tracking_last_received)
-                face_box.label(
-                    text="Live" if age < 1.0 else f"Last update: {age:.1f}s ago"
-                )
-                for name, value in values[:12]:
-                    face_box.label(text=f"{name}: {value:.3f}")
-                if len(values) > 12:
-                    face_box.label(text=f"... and {len(values) - 12} more")
-
-            eye_box = face_box.box()
-            eye_box.label(text="Eye gaze (v2/EyeLeftX/Y and EyeRightX/Y)")
-            if armature:
-                eye_box.prop_search(
-                    scene, "puppetvmc_face_left_eye_bone",
-                    armature.pose, "bones", text="Left Eye",
-                )
-                eye_box.prop_search(
-                    scene, "puppetvmc_face_right_eye_bone",
-                    armature.pose, "bones", text="Right Eye",
-                )
-            else:
-                eye_box.label(text="Select an armature to map eye bones")
-            eye_box.prop(scene, "puppetvmc_face_eye_max_angle")
-            row = eye_box.row(align=True)
-            row.prop(scene, "puppetvmc_face_eye_invert_horizontal")
-            row.prop(scene, "puppetvmc_face_eye_invert_vertical")
-
-            shape_box = face_box.box()
-            shape_box.label(text="Eyelids and optional brows")
-            if armature:
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_eyelid_left_bone",
-                    armature.pose, "bones", text="Left Eyelid Bone (optional)",
-                )
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_eyelid_right_bone",
-                    armature.pose, "bones", text="Right Eyelid Bone (optional)",
-                )
-                shape_box.prop(scene, "puppetvmc_face_eyelid_max_angle")
-                shape_box.prop(scene, "puppetvmc_face_eyelid_invert")
-            shape_box.prop(scene, "puppetvmc_face_mesh")
-            mesh = scene.puppetvmc_face_mesh
-            if mesh and mesh.data.shape_keys:
-                keys = mesh.data.shape_keys
-                shape_box.label(text="Map blink to either a bone or shape key")
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_blink_left_key", keys, "key_blocks",
-                    text="Left Blink",
-                )
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_blink_right_key", keys, "key_blocks",
-                    text="Right Blink",
-                )
-                shape_box.separator()
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_brow_up_key", keys, "key_blocks",
-                    text="Brow Up (optional)",
-                )
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_brow_down_left_key", keys,
-                    "key_blocks", text="Left Brow Down (optional)",
-                )
-                shape_box.prop_search(
-                    scene, "puppetvmc_face_brow_down_right_key", keys,
-                    "key_blocks", text="Right Brow Down (optional)",
-                )
-            else:
-                shape_box.label(text="Choose a mesh with shape keys")
-            face_box.label(
-                text="Disconnect/reconnect after changing eye-bone mappings"
-            )
+            _draw_face_tracking(layout, scene, armature)
 
 
 classes = (

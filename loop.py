@@ -72,7 +72,8 @@ def process_queue(context):
     # puppetvmc.start_calibration_timer has elapsed. Lets you trigger it
     # BEFORE raising your arms into T-pose instead of needing a free hand
     # while already posed.
-    if state.calibration["countdown_end"] is not None:
+    if (not scene.puppetvmc_face_only
+            and state.calibration["countdown_end"] is not None):
         if time.time() >= state.calibration["countdown_end"]:
             state.calibration["origin"] = None
             state.ovr["hmd_origin"] = None
@@ -152,7 +153,8 @@ def process_queue(context):
         state.face_tracking_last_received is not None
         and time.time() - state.face_tracking_last_received > FACE_TRACKING_TIMEOUT
     )
-    if (armature and state.face_receiver is not None
+    if ((armature or scene.puppetvmc_face_mesh)
+            and state.face_receiver is not None
             and (face_tracking_updated or face_tracking_expired)):
         apply_face_tracking(
             armature,
@@ -165,24 +167,30 @@ def process_queue(context):
             state.face_tracking_values.clear()
             state.face_tracking_last_received = None
 
+    if scene.puppetvmc_face_only and scene.puppetvmc_recording:
+        from .recorder import record_face_frame
+        record_face_frame(context)
+
     if armature and scene.puppetvmc_animation_playing and state.animation_clip:
         from .unity_animation import apply_clip
         elapsed = time.perf_counter() - state.animation_started_at
         state.animation_elapsed = elapsed
         apply_clip(state.bone_cache, state.animation_clip, elapsed)
 
-    if scene.puppetvmc_use_openvr_fingers and armature:
+    if not scene.puppetvmc_face_only and scene.puppetvmc_use_openvr_fingers and armature:
         poll_openvr_fingers(armature)
-    if scene.puppetvmc_use_openvr_hmd_position and armature:
+    if (not scene.puppetvmc_face_only
+            and scene.puppetvmc_use_openvr_hmd_position and armature):
         apply_hmd_root_position(
             armature,
             include_vertical=scene.puppetvmc_openvr_hmd_vertical,
             unit_scale=scene.unit_settings.scale_length,
         )
 
-    poll_record_buttons(context)
+    if not scene.puppetvmc_face_only:
+        poll_record_buttons(context)
 
-    if armature and scene.puppetvmc_headcam:
+    if not scene.puppetvmc_face_only and armature and scene.puppetvmc_headcam:
         update_head_camera(context, armature)
-    if scene.puppetvmc_xr_camera:
+    if not scene.puppetvmc_face_only and scene.puppetvmc_xr_camera:
         update_xr_camera(context)
