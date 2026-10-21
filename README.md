@@ -63,7 +63,7 @@ and maps eye gaze, eyelids, and optionally brows:
 For facial capture without body/FBT input, enable **Face Only (no body
 tracking)** at the top of the panel. Choose an armature and/or a face mesh,
 connect, then click **Record Facial Expressions**. This mode only opens the
-VRCFaceTracking listener; it does not start the VMC body receiver or SteamVR
+face OSC listener; it does not start the VMC body receiver or SteamVR
 tracking. Recording keys the mapped facial bones and shape keys on the
 current timeline, advances one frame per add-on timer tick, and creates
 separate Face Only actions instead of collecting raw VMC packets. Stop
@@ -83,10 +83,21 @@ recording with **Stop Face Recording**; disconnect when finished.
   Set the rotation axis, maximum angle, and inversion to fit the rig. If a
   brow bone is assigned, it takes priority over that parameter's shape key;
   leave the bone blank to use a mapped brow shape key instead.
-- For rigs with eyelid bones instead of blink shape keys, map the optional
-  **Left/Right Eyelid Bone** fields instead. A mapped eyelid bone takes
-  precedence over that side's shape key; **Max Eyelid Angle** and the invert
-  toggle tune its local rotation. Bone mappings are captured at Connect time.
+- For rigs with eyelid bones instead of blink shape keys, map the **Left/Right
+  Upper Eyelid** and **Left/Right Lower Eyelid** bones. Both lids on each eye
+  follow that eye's closure parameter; the shared
+  `/tracking/eye/EyesClosedAmount` input drives both eyes when separate
+  per-eye VRCFT values are unavailable. Use the independent upper/lower
+  inversion toggles so the lids rotate toward one another. **Max Eyelid
+  Angle** sets the rotation at full closure. Any mapped eyelid bones take
+  precedence over that side's blink shape key. Older single-eyelid bone
+  mappings remain available as a fallback.
+
+PuppetVMC also accepts VRChat eye-tracking OSC input:
+`/tracking/eye/LeftRightPitchYaw` (four angles in degrees: left pitch/yaw,
+right pitch/yaw) and `/tracking/eye/EyesClosedAmount` (one shared 0–1
+closure value). These can be used instead of VRCFT's avatar-parameter
+addresses. Configure the sender to target PuppetVMC's VRCFT OSC port.
 
 VRCFT's default parameter addresses are `/avatar/parameters/v2/<name>`,
 for example `/avatar/parameters/v2/EyeLeftX`. The parameter names and

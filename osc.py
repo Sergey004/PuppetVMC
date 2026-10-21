@@ -56,6 +56,24 @@ class OSCReceiver:
                 if isinstance(value, (int, float, bool)):
                     with self._latest_lock:
                         self._latest[address[len(prefix):]] = (timestamp, value)
+            elif address == "/tracking/eye/EyesClosedAmount" and args:
+                value = args[0]
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    with self._latest_lock:
+                        self._latest["tracking/eye/EyesClosedAmount"] = (
+                            timestamp, value,
+                        )
+            elif (address == "/tracking/eye/LeftRightPitchYaw"
+                  and len(args) >= 4
+                  and all(
+                      isinstance(value, (int, float))
+                      and not isinstance(value, bool)
+                      for value in args[:4]
+                  )):
+                with self._latest_lock:
+                    self._latest["tracking/eye/LeftRightPitchYaw"] = (
+                        timestamp, tuple(args[:4]),
+                    )
             return
 
         if (address == "/VMC/Ext/Bone/Pos" and len(args) >= 8

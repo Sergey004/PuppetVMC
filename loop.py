@@ -136,7 +136,8 @@ def process_queue(context):
 
     if state.face_receiver is not None:
         for name, (timestamp, value) in state.face_receiver.take_latest().items():
-            value = float(value)
+            if not isinstance(value, tuple):
+                value = float(value)
             if state.face_tracking_values.get(name) != value:
                 state.face_tracking_values[name] = value
                 face_tracking_updated = True

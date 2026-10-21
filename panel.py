@@ -9,14 +9,14 @@ from .bones import get_bone_map_conflicts
 
 def _draw_face_tracking(layout, scene, armature):
     face_box = layout.box()
-    face_box.label(text="Face tracking (VRCFaceTracking)")
+    face_box.label(text="Face / eye tracking (VRCFT or VRChat OSC)")
     if not scene.puppetvmc_face_only:
         face_box.prop(scene, "puppetvmc_face_tracking_enabled")
-    face_box.prop(scene, "puppetvmc_face_tracking_port")
+    face_box.prop(scene, "puppetvmc_face_tracking_port", text="Face OSC Port")
     if state.face_receiver is None:
         face_box.label(text="Connect to start the VRCFT listener")
     elif not state.face_tracking_values:
-        face_box.label(text="Waiting for /avatar/parameters/... OSC")
+        face_box.label(text="Waiting for VRCFT or VRChat eye-tracking OSC")
     else:
         values = sorted(state.face_tracking_values.items())
         face_box.label(text=f"Received parameters: {len(values)}")
@@ -25,7 +25,11 @@ def _draw_face_tracking(layout, scene, armature):
             text="Live" if age < 1.0 else f"Last update: {age:.1f}s ago"
         )
         for name, value in values[:12]:
-            face_box.label(text=f"{name}: {value:.3f}")
+            display = (
+                ", ".join(f"{component:.2f}" for component in value)
+                if isinstance(value, tuple) else f"{value:.3f}"
+            )
+            face_box.label(text=f"{name}: {display}")
         if len(values) > 12:
             face_box.label(text=f"... and {len(values) - 12} more")
 
@@ -51,15 +55,34 @@ def _draw_face_tracking(layout, scene, armature):
     shape_box.label(text="Eyelids")
     if armature:
         shape_box.prop_search(
+            scene, "puppetvmc_face_left_upper_eyelid_bone",
+            armature.pose, "bones", text="Left Upper Eyelid",
+        )
+        shape_box.prop_search(
+            scene, "puppetvmc_face_left_lower_eyelid_bone",
+            armature.pose, "bones", text="Left Lower Eyelid",
+        )
+        shape_box.prop_search(
+            scene, "puppetvmc_face_right_upper_eyelid_bone",
+            armature.pose, "bones", text="Right Upper Eyelid",
+        )
+        shape_box.prop_search(
+            scene, "puppetvmc_face_right_lower_eyelid_bone",
+            armature.pose, "bones", text="Right Lower Eyelid",
+        )
+        shape_box.prop(scene, "puppetvmc_face_eyelid_max_angle")
+        shape_box.prop(scene, "puppetvmc_face_eyelid_upper_invert")
+        shape_box.prop(scene, "puppetvmc_face_eyelid_lower_invert")
+        shape_box.separator()
+        shape_box.label(text="Legacy single-bone mapping")
+        shape_box.prop_search(
             scene, "puppetvmc_face_eyelid_left_bone",
-            armature.pose, "bones", text="Left Eyelid Bone (optional)",
+            armature.pose, "bones", text="Left Single Eyelid",
         )
         shape_box.prop_search(
             scene, "puppetvmc_face_eyelid_right_bone",
-            armature.pose, "bones", text="Right Eyelid Bone (optional)",
+            armature.pose, "bones", text="Right Single Eyelid",
         )
-        shape_box.prop(scene, "puppetvmc_face_eyelid_max_angle")
-        shape_box.prop(scene, "puppetvmc_face_eyelid_invert")
     shape_box.prop(scene, "puppetvmc_face_mesh")
     mesh = scene.puppetvmc_face_mesh
     if mesh and mesh.data.shape_keys:

@@ -100,8 +100,8 @@ def register():
         default=False,
         description="Connect only to VRCFaceTracking and record facial controls")
     bpy.types.Scene.puppetvmc_face_tracking_port = bpy.props.IntProperty(
-        name="VRCFT OSC Port", default=9002, min=1, max=65535,
-        description="UDP port VRCFaceTracking sends avatar parameter OSC messages to")
+        name="Face OSC Port", default=9002, min=1, max=65535,
+        description="UDP port for VRCFaceTracking parameters or VRChat eye-tracking OSC")
     bpy.types.Scene.puppetvmc_face_left_eye_bone = bpy.props.StringProperty(
         name="Left Eye Bone", description="Armature bone driven by VRCFT eye gaze")
     bpy.types.Scene.puppetvmc_face_right_eye_bone = bpy.props.StringProperty(
@@ -118,12 +118,24 @@ def register():
         name="Left Eyelid Bone", description="Optional bone driven by v2/EyeClosedLeft")
     bpy.types.Scene.puppetvmc_face_eyelid_right_bone = bpy.props.StringProperty(
         name="Right Eyelid Bone", description="Optional bone driven by v2/EyeClosedRight")
+    bpy.types.Scene.puppetvmc_face_left_upper_eyelid_bone = bpy.props.StringProperty(
+        name="Left Upper Eyelid Bone")
+    bpy.types.Scene.puppetvmc_face_left_lower_eyelid_bone = bpy.props.StringProperty(
+        name="Left Lower Eyelid Bone")
+    bpy.types.Scene.puppetvmc_face_right_upper_eyelid_bone = bpy.props.StringProperty(
+        name="Right Upper Eyelid Bone")
+    bpy.types.Scene.puppetvmc_face_right_lower_eyelid_bone = bpy.props.StringProperty(
+        name="Right Lower Eyelid Bone")
     bpy.types.Scene.puppetvmc_face_eyelid_max_angle = bpy.props.FloatProperty(
         name="Max Eyelid Angle", default=math.radians(20.0), min=0.0,
         max=math.radians(90.0), subtype='ANGLE',
         description="Maximum local eyelid-bone rotation at full closure")
     bpy.types.Scene.puppetvmc_face_eyelid_invert = bpy.props.BoolProperty(
         name="Invert Eyelid Bone Rotation", default=False)
+    bpy.types.Scene.puppetvmc_face_eyelid_upper_invert = bpy.props.BoolProperty(
+        name="Invert Upper Eyelids", default=False)
+    bpy.types.Scene.puppetvmc_face_eyelid_lower_invert = bpy.props.BoolProperty(
+        name="Invert Lower Eyelids", default=True)
     bpy.types.Scene.puppetvmc_face_mesh = bpy.props.PointerProperty(
         type=bpy.types.Object, poll=_poll_mesh_with_shape_keys, name="Face Mesh")
     bpy.types.Scene.puppetvmc_face_blink_left_key = bpy.props.StringProperty(
@@ -205,8 +217,14 @@ def unregister():
     del bpy.types.Scene.puppetvmc_face_eye_invert_vertical
     del bpy.types.Scene.puppetvmc_face_eyelid_left_bone
     del bpy.types.Scene.puppetvmc_face_eyelid_right_bone
+    del bpy.types.Scene.puppetvmc_face_left_upper_eyelid_bone
+    del bpy.types.Scene.puppetvmc_face_left_lower_eyelid_bone
+    del bpy.types.Scene.puppetvmc_face_right_upper_eyelid_bone
+    del bpy.types.Scene.puppetvmc_face_right_lower_eyelid_bone
     del bpy.types.Scene.puppetvmc_face_eyelid_max_angle
     del bpy.types.Scene.puppetvmc_face_eyelid_invert
+    del bpy.types.Scene.puppetvmc_face_eyelid_upper_invert
+    del bpy.types.Scene.puppetvmc_face_eyelid_lower_invert
     del bpy.types.Scene.puppetvmc_face_mesh
     del bpy.types.Scene.puppetvmc_face_blink_left_key
     del bpy.types.Scene.puppetvmc_face_blink_right_key

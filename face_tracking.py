@@ -1,5 +1,6 @@
 """Apply VRCFaceTracking eye and expression parameters to a Blender rig."""
 
+import math
 import time
 
 from mathutils import Euler
@@ -31,6 +32,10 @@ def capture_eye_baselines(armature, scene):
         scene.puppetvmc_face_right_eye_bone,
         scene.puppetvmc_face_eyelid_left_bone,
         scene.puppetvmc_face_eyelid_right_bone,
+        scene.puppetvmc_face_left_upper_eyelid_bone,
+        scene.puppetvmc_face_left_lower_eyelid_bone,
+        scene.puppetvmc_face_right_upper_eyelid_bone,
+        scene.puppetvmc_face_right_lower_eyelid_bone,
         scene.puppetvmc_face_brow_up_bone,
         scene.puppetvmc_face_brow_down_left_bone,
         scene.puppetvmc_face_brow_down_right_bone,
@@ -55,6 +60,16 @@ def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
     vertical_sign = -1.0 if scene.puppetvmc_face_eye_invert_vertical else 1.0
     yaw = max(-1.0, min(1.0, horizontal)) * limit * horizontal_sign
     pitch = max(-1.0, min(1.0, vertical)) * limit * vertical_sign
+    _apply_eye_angles(armature, bone_name, yaw, pitch, baselines)
+
+
+def _apply_eye_angles(armature, bone_name, yaw, pitch, baselines):
+    if armature is None or not bone_name:
+        return
+    pose_bone = armature.pose.bones.get(bone_name)
+    baseline = baselines.get(bone_name)
+    if pose_bone is None or baseline is None:
+        return
 
     pose_bone.rotation_mode = 'QUATERNION'
     pose_bone.rotation_quaternion = (
@@ -62,7 +77,7 @@ def _apply_eye(armature, bone_name, horizontal, vertical, scene, baselines):
     )
 
 
-def _apply_eyelid(armature, bone_name, value, scene, baselines):
+def _apply_eyelid(armature, bone_name, value, invert, scene, baselines):
     if armature is None or not bone_name or value is None:
         return
     pose_bone = armature.pose.bones.get(bone_name)
@@ -71,10 +86,20 @@ def _apply_eyelid(armature, bone_name, value, scene, baselines):
         return
 
     angle = scene.puppetvmc_face_eyelid_max_angle * max(0.0, min(1.0, value))
-    if scene.puppetvmc_face_eyelid_invert:
+    if invert:
         angle = -angle
     pose_bone.rotation_mode = 'QUATERNION'
     pose_bone.rotation_quaternion = baseline @ Euler((angle, 0.0, 0.0), 'XYZ').to_quaternion()
+
+
+def _reset_bone(armature, bone_name, baselines):
+    if armature is None or not bone_name:
+        return
+    pose_bone = armature.pose.bones.get(bone_name)
+    baseline = baselines.get(bone_name)
+    if pose_bone is not None and baseline is not None:
+        pose_bone.rotation_mode = 'QUATERNION'
+        pose_bone.rotation_quaternion = baseline.copy()
 
 
 def _apply_brow(armature, bone_name, value, scene, baselines):
@@ -114,18 +139,14 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
     for side in ("Left", "Right"):
         horizontal = _get_value(values, f"v2/Eye{side}X")
         vertical = _get_value(values, f"v2/Eye{side}Y")
+        tracking_angles = _get_value(
+            values, "tracking/eye/LeftRightPitchYaw"
+        )
         if stale:
             bone_name = getattr(
                 scene, f"puppetvmc_face_{side.lower()}_eye_bone"
             )
-            baseline = baselines.get(bone_name)
-            pose_bone = (
-                armature.pose.bones.get(bone_name)
-                if armature is not None and bone_name else None
-            )
-            if pose_bone is not None and baseline is not None:
-                pose_bone.rotation_mode = 'QUATERNION'
-                pose_bone.rotation_quaternion = baseline.copy()
+            _reset_bone(armature, bone_name, baselines)
         elif horizontal is not None or vertical is not None:
             _apply_eye(
                 armature,
@@ -135,26 +156,79 @@ def apply_face_tracking(armature, scene, values, baselines, last_received):
                 scene,
                 baselines,
             )
+        elif tracking_angles is not None:
+            offset = 0 if side == "Left" else 2
+            pitch = max(
+                -scene.puppetvmc_face_eye_max_angle,
+                min(
+                    scene.puppetvmc_face_eye_max_angle,
+                    math.radians(tracking_angles[offset]),
+                ),
+            )
+            yaw = max(
+                -scene.puppetvmc_face_eye_max_angle,
+                min(
+                    scene.puppetvmc_face_eye_max_angle,
+                    math.radians(tracking_angles[offset + 1]),
+                ),
+            )
+            pitch_sign = (
+                -1.0 if scene.puppetvmc_face_eye_invert_vertical else 1.0
+            )
+            yaw_sign = (
+                -1.0 if scene.puppetvmc_face_eye_invert_horizontal else 1.0
+            )
+            _apply_eye_angles(
+                armature,
+                getattr(scene, f"puppetvmc_face_{side.lower()}_eye_bone"),
+                yaw * yaw_sign,
+                pitch * pitch_sign,
+                baselines,
+            )
 
     mesh = scene.puppetvmc_face_mesh
+    common_blink = _get_value(
+        values, "tracking/eye/EyesClosedAmount"
+    )
     for side in ("Left", "Right"):
         suffix = side.lower()
         value = None if stale else _get_value(values, f"v2/EyeClosed{side}")
-        bone_name = getattr(scene, f"puppetvmc_face_eyelid_{suffix}_bone")
+        if value is None and not stale:
+            value = common_blink
+        upper_bone = getattr(
+            scene, f"puppetvmc_face_{suffix}_upper_eyelid_bone"
+        )
+        lower_bone = getattr(
+            scene, f"puppetvmc_face_{suffix}_lower_eyelid_bone"
+        )
+        legacy_bone = getattr(
+            scene, f"puppetvmc_face_eyelid_{suffix}_bone"
+        )
+        has_pair = bool(upper_bone or lower_bone)
         if stale:
-            baseline = baselines.get(bone_name)
-            pose_bone = (
-                armature.pose.bones.get(bone_name)
-                if armature is not None and bone_name else None
-            )
-            if pose_bone is not None and baseline is not None:
-                pose_bone.rotation_mode = 'QUATERNION'
-                pose_bone.rotation_quaternion = baseline.copy()
+            _reset_bone(armature, upper_bone, baselines)
+            _reset_bone(armature, lower_bone, baselines)
+            _reset_bone(armature, legacy_bone, baselines)
             _apply_shape_key(
                 mesh, getattr(scene, f"puppetvmc_face_blink_{suffix}_key"), 0.0
             )
-        elif bone_name:
-            _apply_eyelid(armature, bone_name, value, scene, baselines)
+        elif has_pair:
+            _apply_eyelid(
+                armature, upper_bone, value,
+                scene.puppetvmc_face_eyelid_upper_invert,
+                scene, baselines,
+            )
+            _apply_eyelid(
+                armature, lower_bone, value,
+                scene.puppetvmc_face_eyelid_lower_invert,
+                scene, baselines,
+            )
+        elif legacy_bone:
+            _apply_eyelid(
+                armature, legacy_bone, value,
+                scene.puppetvmc_face_eyelid_invert,
+                scene, baselines,
+            )
         else:
             _apply_shape_key(
                 mesh, getattr(scene, f"puppetvmc_face_blink_{suffix}_key"), value
